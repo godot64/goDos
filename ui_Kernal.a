@@ -1180,7 +1180,7 @@ menu	jsr fill
 	sta sc_zl
 	lda #2
 	sta sc_sp
-	lda #9
+	lda #10
 	sta sc_br
 	lda #6
 	sta sc_ho
@@ -1258,8 +1258,8 @@ ui_menu	jsr menu
 
 ; ------------------------------------------------ Event: U&I Load File
 
-ui_load	jsr mainscr
-	jmp ev_load
+ui_save	jsr mainscr
+	jmp ev_save
 
 ; ------------------------------------------------ Event: Exit U&I
 
@@ -2143,12 +2143,18 @@ ui_first	lda sc_normtext
 	sta border
 	rts
 
-; ------------------------------------------------ Event: Save File
+; ------------------------------------------------ Event: Load Image
 
-ui_save	jsr mainscr
-	jmp ev_save
+ui_load	jsr mainscr
+	jmp ev_load
 
-; ------------------------------------------------ Event: Install File
+; ------------------------------------------------ Event: Show Image
+
+ui_show	jsr mainscr
+	jsr ev_display
+	jmp mainscr
+
+; ------------------------------------------------ Event: Execute MOD
 
 ui_exec	jsr mainscr
 	jmp ev_exec
@@ -2165,41 +2171,41 @@ mainlst	!by 0
 	!by $80
 
 menulst	!by 0
-	!by 20,1,11,3,$40	; Exit
+	!by 20,1,12,3,$40	; Exit
 	!wo ui_exit
-	!by 19,1,11,3,$40	; Exec
+	!by 19,1,12,3,$40	; Exec
 	!wo ui_exec
-	!by 18,1,11,3,$40	; Choose MOD
+	!by 18,1,12,3,$40	; Choose MOD
 	!wo ev_mod
-	!by 17,1,11,3,$40	; Save
-	!wo ui_save
-	!by 16,1,11,3,$40	; Load
+	!by 17,1,12,3,$40	; Display
+	!wo ui_show
+	!by 16,1,12,3,$40	; Load
 	!wo ui_load
-	!by 15,1,11,3,$40	; GoDot
-	!wo ev_display
-	!by 14,1,11,3,$00	; Separator
+	!by 15,1,12,3,$40	; Choose Loader
+	!wo ev_ldr
+	!by 14,1,12,3,$00	; Separator
 	!wo 0
-	!by 13,1,11,10,$90	; Titlebar
+	!by 13,1,12,10,$90	; Titlebar
 	!wo 0
-	!scr "U&I will:@"
+	!scr "goDos 0.99@"
 	!by 22,0,7,3,$c0
 	!wo se_cancel
 	!scr "Start@"
 	!by 0,33,7,3,$a0
 	!wo 0
 	!scr " U&I @"
-	!by $c0,14,1,9
-	!scr "---------@"
-	!by $c0,15,1,9
-	!scr "Run GoDot@"
-	!by $c0,16,1,9
-	!scr "Load File@"
-	!by $c0,17,1,9
-	!scr "Save File@"
-	!by $c0,18,1,9
-	!scr "Find MOD @"
-	!by $c0,19,1,9
-	!scr "Execute  @"
+	!by $c0,14,1,10
+	!scr "----------@"
+	!by $c0,15,1,10
+	!scr "Find LDR  @"
+	!by $c0,16,1,10
+	!scr "Load Image@"
+	!by $c0,17,1,10
+	!scr "Show Image@"
+	!by $c0,18,1,10
+	!scr "Find MOD  @"
+	!by $c0,19,1,10
+	!scr "Execute it@"
 	!by $c0,20,1,4
 	!scr "Exit@"
 	!by $80

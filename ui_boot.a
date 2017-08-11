@@ -77,12 +77,13 @@ b2	sta booter,y
 	devs		= $0fa2
 	adrive		= $0fc3
 	gdrive		= adrive+1
-	scm1		= $148e
-	sm2		= $14e2
-	ld11		= $1825
+	scm1		= $148e	; part of gd_sendcom
+	sm2		= $14e2	; gd_setpar
+	ld11		= $1825	; part of se_load
+
 	filtype		= $1d29 	; selfmodifying kernel! (Filerequester)
 	ramtype		= $1d8f
-	hirs		= $1db4
+	hirs		= $1db4	; Caution with these!
 	scrmode		= $1edc
 	magic5		= $1aab
 	
@@ -251,7 +252,7 @@ m1571	!pet "u0>m1"		; 1571 auf doppelseitig schalten
 
 ; --------------------------------------- 
 
-charset	!pet "god.set"
+charset	!pet "uni.set"
 chlen	!byte $07
 mainprg	!pet "uni.main"
 mplen	!byte $08
@@ -292,12 +293,12 @@ setscreen	lda #$12		; GoDot-Boot-Screen ausgeben
 	jsr gd_screen
 	lda #11
 	sta sc_chgcol
-	lda #9
+	lda #9		; Zeile
 
-; --------------------------------------- 
+; --------------------------------------- Logo einfärben
 
-scolor	ldx #7		; Logo einfärben
-	ldy #26
+scolor	ldx #6		; Spalte
+	ldy #29		; Breite
 	jsr sm2
 	ldx #5
 	stx sc_ho
@@ -324,6 +325,7 @@ scolor	ldx #7		; Logo einfärben
 	n=a+13
 	o=a+14
 	p=a+15
+	u=a-1
 	s=32
 	ss=160
 
@@ -332,51 +334,52 @@ scolor	ldx #7		; Logo einfärben
 godlst	!byte $93
 	!byte 0,0,40,25,$02,0,0
 	!byte 22,3,34,3,$8c,0,0
-	!by 87,5,12,3,15,13,5,33,0
-	!byte $c0,1,6,26
-	!by a,ss,ss,ss,b,s,s,s,s,s,s,s,ss,ss,ss,ss,b
-	!byte s,s,s,s,s,s,s,ss,s,0
-	!byte $c0,2,6,26
-	!by ss,e,s,f,ss,s,a,ss,ss,ss,b,s
-	!byte ss,s,s,f,ss,s,a,ss,ss,ss,b,i,ss,ss,0
-	!byte $c0,3,6,26
-	!by ss,s,s,s,s,s,ss,e,s,f,ss,s
-	!byte ss,s,s,s,ss,s,ss,e,s,f,ss,s,ss,s,0
-	!byte $c0,4,6,26
-	!by ss,s,s,ss,ss,s,ss,s,s,s,ss,s
-	!byte ss,s,s,s,ss,s,ss,s,s,s,ss,s,ss,s,0
-	!byte $c0,5,6,26
-	!by ss,s,s,s,ss,s,ss,s,s,s,ss,s
-	!byte ss,s,s,s,ss,s,ss,s,s,s,ss,s,ss,s,0
-	!byte $c0,6,6,26
-	!by ss,g,s,h,ss,s,ss,g,s,h,ss,s
-	!byte ss,s,s,h,ss,s,ss,g,s,h,ss,s,ss,g,0
-	!byte $c0,7,6,26
-	!by c,ss,ss,ss,d,s,c,ss,ss,ss,d,s
-	!byte ss,ss,ss,ss,d,s,c,ss,ss,ss,d,s,c,ss,0
-	!byte $c0,8,6,26
-	!by j,k,k,k,l,s,j,k,k,k,l,s
-	!byte k,k,k,k,l,s,j,k,k,k,l,s,j,k,0
-	!byte $c0,9,6,26
-	!by m,s,s,s,m,s,m,s,s,s,m,s
-	!byte m,s,s,s,m,s,m,s,s,s,m,s,m,s,0
-	!byte $c0,10,6,26
-	!by n,s,s,s,n,s,n,s,s,s,n,s
-	!byte n,s,s,s,n,s,n,s,s,s,n,s,n,s,0
-	!byte $c0,11,6,26
-	!by o,s,s,o,o,s,o,s,s,s,o,s
-	!byte o,s,s,s,o,s,o,s,s,s,o,s,o,s,0
-	!byte $c0,12,6,26
-	!by p,s,s,s,s,s,p,s,s,s,p,s
-	!byte p,s,s,s,p,s,p,s,s,s,p,s,p,s,0
+	!scr "Welcome!@"
+
+	!byte $c0,1,5,29
+	!by s,s,s,s,s,s,s,s,s,s,s,s,ss,ss,ss,ss,b	; 1
+	!byte s,s,s,s,s,s,s,s,s,s,s,s,0
+	!byte $c0,2,5,29
+	!by a,ss,ss,ss,b,s,a,ss,ss,ss,b,s		; 2
+	!byte ss,s,s,f,ss,s,a,ss,ss,ss,b,s,a,ss,ss,ss,b,0
+	!byte $c0,3,5,29
+	!by ss,e,s,f,ss,s,ss,e,s,f,ss,s		; 3
+	!byte ss,s,s,s,ss,s,ss,e,s,f,ss,s,ss,i,s,f,u,0
+	!byte $c0,4,5,29
+	!by ss,s,s,s,s,s,ss,s,s,s,ss,s		; 4
+	!byte ss,s,s,s,ss,s,ss,s,s,s,ss,s,c,ss,ss,ss,b,0
+	!byte $c0,5,5,29
+	!by ss,s,s,ss,ss,s,ss,s,s,s,ss,s		; 5
+	!byte ss,s,s,s,ss,s,ss,s,s,s,ss,s,s,s,s,f,ss,0
+	!byte $c0,6,5,29
+	!by ss,g,s,h,ss,s,ss,g,s,h,ss,s		; 6
+	!byte ss,s,s,h,ss,s,ss,g,s,h,ss,s,ss,g,s,h,ss,0
+	!byte $c0,7,5,29
+	!by c,ss,ss,ss,d,s,c,ss,ss,ss,d,s		; 7
+	!byte ss,ss,ss,ss,d,s,c,ss,ss,ss,d,s,c,ss,ss,ss,d,0
+	!byte $c0,8,5,29
+	!by j,k,k,k,l,s,j,k,k,k,l,s			; 8
+	!byte k,k,k,k,l,s,j,k,k,k,l,s,j,k,k,k,l,0
+	!byte $c0,9,5,29
+	!by m,s,s,s,m,s,m,s,s,s,m,s			; 9
+	!byte m,s,s,s,m,s,m,s,s,s,m,s,m,s,s,s,m,0
+	!byte $c0,10,5,29
+	!by n,s,s,n,n,s,n,s,s,s,n,s			; 10
+	!byte n,s,s,s,n,s,n,s,s,s,n,s,s,s,s,s,n,0
+	!byte $c0,11,5,29
+	!by o,s,s,s,s,s,o,s,s,s,o,s			; 11
+	!byte o,s,s,s,o,s,o,s,s,s,o,s,o,o,o,o,o,0
+	!byte $c0,12,5,29
+	!by p,s,s,s,p,s,p,s,s,s,p,s			; 12
+	!byte p,s,s,s,p,s,p,s,s,s,p,s,p,s,s,s,p,0
 	
 	!byte $c0,15,14,8
 	!scr "A.Dettke@"
 	!byte $c0,17,16,4
 	!scr "2017@"
 
-	!byte $c0,19,7,21
-	!scr "All on a Commodore 64@"
+	!byte $c0,19,7,24
+	!scr "Commodore 64 OS Extender@"
 	!byte $80
 
 ; --------------------------------------- 
@@ -401,7 +404,7 @@ putmess	lda #20		; in Zeile 20
 
 ; --------------------------------------- Systemfiles laden
 
-load4	lda chlen		; zuerst Zeichensatz (god.set)
+load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	ldx #<(charset) 
 	ldy #>(charset)
 	jsr filnam

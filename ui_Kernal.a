@@ -4,9 +4,8 @@
 
 ; -------------------------------------------------- 
 ;
-; This is the U&I kernal 1.00 
-; It is based on GoDot kernal v1.30, all routines are identical.
-; The difference is just the new UI. More Features to come.
+; This is the U&I kernel 1.00 
+; It is based on GoDot kernel v1.30.
 ;
 ; 1.00, 06.08.17, first release
 ;
@@ -604,7 +603,7 @@ most	lda #0
 ; -------------------------------------------------- Version Number
 
 gd_version
-	!by $01,$30	; kernal version number, SED-mode
+	!by $00,$99	; kernal version number, SED-mode
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Entry to U&I, Main Loop
@@ -1107,14 +1106,14 @@ ev_exec	lda #$e0		; mods at $e000
 
 se_save	bne ss1		; determine whether RAM
 	jmp ld11		; RAM active, jump back
-ss1	tya		; .y=0 (tya is dummy)
-	!by $2c		; function number 0 (Save)
+ss1	tya		; dummy
+	lda #$d0		; get back saver
+	bne evb2		; function number 0 (Save)
 
 ; -------------------------------------------------- Subevent: Input Text
 
 se_input	ldy #1		; function number 1 (Input)
-	lda #$d0		; savers at $d000
-	bne evb1
+	!by $2c
 
 ; -------------------------------------------------- Event: Redisplay
 
@@ -1126,16 +1125,16 @@ ev_disp2	ldy #7		; func # 7
 ev_prviu	ldy #6		; func # 6
 	!by $2c
 
-; -------------------------------------------------- Event: Show Guru
+; -------------------------------------------------- former Event: Show Guru
 
 ev_info	ldy #5		; func # 5
 	!by $2c
-; -------------------------------------------------- Event: Toggle Clip/Full
+; -------------------------------------------------- former Event: Toggle Clip/Full
 
 ev_area	ldy #4		; func # 4
 	!by $2c
 
-; -------------------------------------------------- Event: Select Dither Type
+; -------------------------------------------------- former Event: Select Dither Type
 
 ev_dith	ldy #3		; func # 3
 	!by $2c
@@ -1146,12 +1145,12 @@ ev_display
 	ldy #2		; func # 2
 	!by $2c
 
-; -------------------------------------------------- Event: Palette
+; -------------------------------------------------- former Event: Palette
 
 ev_pal	ldy #1		; func # 1
 	!by $2c
 
-; -------------------------------------------------- Event: Balancing
+; -------------------------------------------------- former Event: Balancing
 
 ev_balance
 	ldy #0		; func # 0
@@ -1176,13 +1175,13 @@ menu	jsr fill
 	ldx #<menulst	; display requester
 	ldy #>menulst
 	jsr screen
-	lda #16		; set normcolor
+	lda #15		; set normcolor to row
 	sta sc_zl
-	lda #2
+	lda #2		; column
 	sta sc_sp
-	lda #10
+	lda #10		; width
 	sta sc_br
-	lda #6
+	lda #7		; height
 	sta sc_ho
 	ldy #0
 	ldx #2
@@ -1256,10 +1255,10 @@ ui_menu	jsr menu
 	sec
 	rts
 
-; ------------------------------------------------ Event: U&I Load File
+; ------------------------------------------------ Event: U&I Load System Tool
 
-ui_save	jsr mainscr
-	jmp ev_save
+ui_ldsys	jsr mainscr
+	jmp ev_sys
 
 ; ------------------------------------------------ Event: Exit U&I
 
@@ -1444,11 +1443,11 @@ ev_ldr	lda #<(ldr)
 	lda #1
 	bne lsm0
 
-; -------------------------------------------------- Event: Install Saver
+; -------------------------------------------------- Event: Install System Tool
 
-ev_svr	lda #<(svr)
+ev_sys	lda #<(sys)
 	pha
-	lda #>(svr)
+	lda #>(sys)
 	pha
 	lda #2
 	bne lsm0
@@ -2060,7 +2059,7 @@ filtype	!scr "  *  @"
 
 ldr	!pet "ldr.*"
 	!by 0
-svr	!pet "svr.*"
+sys	!pet "sys.*"
 	!by 0
 mod	!pet "mod.*"
 	!by 0
@@ -2148,6 +2147,12 @@ ui_first	lda sc_normtext
 ui_load	jsr mainscr
 	jmp ev_load
 
+; ------------------------------------------------ Event: Explorer
+
+ui_sys	jsr mainscr
+	sta ls_loadsave
+	jmp ss1
+
 ; ------------------------------------------------ Event: Show Image
 
 ui_show	jsr mainscr
@@ -2157,7 +2162,8 @@ ui_show	jsr mainscr
 ; ------------------------------------------------ Event: Execute MOD
 
 ui_exec	jsr mainscr
-	jmp ev_exec
+	jsr ev_exec
+	jmp mainscr
 
 ; -------------------------------------------------- 
 
@@ -2171,41 +2177,48 @@ mainlst	!by 0
 	!by $80
 
 menulst	!by 0
+	!by 13,1,12,3,$00	; Separator
+	!wo 0
+	!by 14,1,12,3,$40	; Choose Loader
+	!wo ev_ldr
+	!by 15,1,12,3,$40	; Load
+	!wo ui_load
+	!by 16,1,12,3,$40	; Display
+	!wo ui_show
+	!by 17,1,12,3,$40	; Choose MOD
+	!wo ev_mod
+	!by 18,1,12,3,$40	; Exec
+	!wo ui_exec
+	!by 19,1,12,3,$40	; Explorer
+	!wo ui_sys
 	!by 20,1,12,3,$40	; Exit
 	!wo ui_exit
-	!by 19,1,12,3,$40	; Exec
-	!wo ui_exec
-	!by 18,1,12,3,$40	; Choose MOD
-	!wo ev_mod
-	!by 17,1,12,3,$40	; Display
-	!wo ui_show
-	!by 16,1,12,3,$40	; Load
-	!wo ui_load
-	!by 15,1,12,3,$40	; Choose Loader
-	!wo ev_ldr
-	!by 14,1,12,3,$00	; Separator
-	!wo 0
-	!by 13,1,12,10,$90	; Titlebar
+
+	!by 12,1,12,11,$90	; Titlebar
 	!wo 0
 	!scr "goDos 0.99@"
+
 	!by 22,0,7,3,$c0
 	!wo se_cancel
 	!scr "Start@"
 	!by 0,33,7,3,$a0
 	!wo 0
 	!scr " U&I @"
-	!by $c0,14,1,10
+
+	!by $c0,13,1,10
 	!scr "----------@"
-	!by $c0,15,1,10
+	!by $c0,14,1,10
 	!scr "Find LDR  @"
-	!by $c0,16,1,10
+	!by $c0,15,1,10
 	!scr "Load Image@"
-	!by $c0,17,1,10
+	!by $c0,16,1,10
 	!scr "Show Image@"
-	!by $c0,18,1,10
+	!by $c0,17,1,10
 	!scr "Find MOD  @"
-	!by $c0,19,1,10
+	!by $c0,18,1,10
 	!scr "Execute it@"
+	!by $c0,19,1,8
+	!scr "Explorer@"
 	!by $c0,20,1,4
 	!scr "Exit@"
 	!by $80

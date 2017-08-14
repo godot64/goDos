@@ -18,7 +18,7 @@
 ;   1.36, 31.05.17 ; changed length of swp.file to 4096 bytes
 ;   1.37, 15.07.17 ; accommodation to dev.REU v1.07
 ;
-;   1.38, 07.08.17,  first release for godos 1.00
+;   0.99, 07.08.17,  first release for godos 
 ;
 ; ------------------------------------------------------------ 
 
@@ -162,19 +162,19 @@ m01	ldx mousey
 	lda #$13
 	sta irq+1
 	cli
-;	ldx #$10		; preset Balancing values
-;	stx gr_ctr
-;	stx gr_brt
-;	dex		; preset Palettes
-;m1	lda paldef,x
-;	sta gr_palette,x
-;	sta gr_basepal,x
-;	dex
-;	bpl m1
-;	lda mode		; preset Graphics mode and...
-;	sta gr_cmode
-;	lda colors	; number of colors
-;	sta gr_howmany
+	ldx #$10		; preset Balancing values
+	stx gr_ctr
+	stx gr_brt
+	dex		; preset Palettes
+m1	lda paldef,x
+	sta gr_palette,x
+	sta gr_basepal,x
+	dex
+	bpl m1
+	lda mode		; preset Graphics mode and...
+	sta gr_cmode
+	lda colors	; number of colors
+	sta gr_howmany
 ;	jsr gd_xcnvdez	; and enter to the display
 ;	sta magic5+2	; (dummy on U&I)
 ;	txa
@@ -182,7 +182,7 @@ m01	ldx mousey
 ;	bne m2
 ;	ldx #32
 ;m2	stx magic5+1
-;	jsr gd_makeqtab	; create Quantisation table 
+	jsr gd_makeqtab	; create Quantisation table 
 	lda tickcnt	; define Doubleclick 
 	sta sc_ticks
 	lda #$03		; switch on Mouse pointer
@@ -209,7 +209,7 @@ mkt0	lda tabs-$40,x
 
 ; --------------------------------------- 
 
-version	!byte $01,$38	; Versionsnummer in SED-Format
+version	!byte $00,$99	; Versionsnummer in SED-Format
 
 ; --------------------------------------- 
 
@@ -256,7 +256,7 @@ charset	!pet "uni.set"
 chlen	!byte $07
 mainprg	!pet "uni.main"
 mplen	!byte $08
-slot4	!pet "uni.upmem"
+slot4	!pet "uni.slot4"
 s4len	!byte $09
 godini	!pet "uni.ini         "
 godini2	!pet "uni.ini"
@@ -343,7 +343,7 @@ godlst	!byte $93
 	!by a,ss,ss,ss,b,s,a,ss,ss,ss,b,s		; 2
 	!byte ss,s,s,f,ss,s,a,ss,ss,ss,b,s,a,ss,ss,ss,b,0
 	!byte $c0,3,5,29
-	!by ss,e,s,f,ss,s,ss,e,s,f,ss,s		; 3
+	!by ss,e,s,f,u,s,ss,e,s,f,ss,s		; 3
 	!byte ss,s,s,s,ss,s,ss,e,s,f,ss,s,ss,i,s,f,u,0
 	!byte $c0,4,5,29
 	!by ss,s,s,s,s,s,ss,s,s,s,ss,s		; 4
@@ -431,7 +431,7 @@ load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	jsr load
 	bcs error
 	jsr setscreen	; Bootscreen aktivieren
-	lda s4len		; dann die Sonderroutinen (uni.upmem)
+	lda s4len		; dann die Sonderroutinen (uni.slot4)
 	ldx #<(slot4)
 	ldy #>(slot4)
 	jsr filnam
@@ -881,23 +881,23 @@ df0	lda defmod,x	; Filenamen eintragen
 	jsr ld11		; und Modul laden
 
 	jsr setmess
-	lsr ls_dirmask	; dann Saver
-	lda svrlen
+	lsr ls_dirmask	; dann System Tool
+	lda syslen
 	sta ls_flen
 	tax
 	sec
 	sbc #$04
 	sta ls_flen2
 	dex
-df1	lda defsvr,x
+df1	lda defsys,x
 	sta ls_nambuf,x
-	lda bcsvr+4,x
+	lda bcsys+4,x
 	sta ls_lastname,x
 	sta mess1,x
 	dex
 	bpl df1
 	jsr putmess
-	jsr ld11		; Saver laden
+	jsr ld11		; System Tool laden
 
 	jsr setmess
 	lsr ls_dirmask	; zuletzt Lader
@@ -1507,7 +1507,7 @@ tc0	inx
 
 ; ---------------------------------------
 
-befclip	jsr gword	; CLIP x,y,b,h
+befclip	jsr gword		; CLIP x,y,b,h
 	bcc cl1
 	sta clip
 cl1	jsr getword
@@ -1610,19 +1610,19 @@ ld2	rts
 
 befsaver	jsr getname	; SAVER "svr.xy"
 	beq sv2
-	sta svrlen
+	sta syslen
 	tax
 sv0	dex
 	bmi sv1
 	lda sc_movetab,x
-	sta defsvr,x
+	sta defsys,x
 	bne sv0
 sv1	jsr gd_cnvbc
-	sta bcsvr,y
+	sta bcsys,y
 sv3	dey
 	bmi sv2
 	lda sc_movetab,y
-	sta bcsvr,y
+	sta bcsys,y
 	bne sv3
 sv2	rts
 
@@ -1955,8 +1955,8 @@ beflist	!word (befcols)-1
 
 ; --------------------------------------- Defaults
 
-colors	!byte 2
-mode	!byte 0
+colors	!byte 16
+mode	!byte 2
 tickcnt	!byte 13
 mousex	!word 80
 mousey	!byte 80
@@ -1973,18 +1973,18 @@ hipal	!byte 0
 ldrlen	!byte 13
 defldr	!pet "ldr.4BitGoDot   "
 bcldr	!scr "ldr.4BitGoDot@  @"
-svrlen	!byte 13
-defsvr	!pet "svr.4BitGoDot   "
-bcsvr	!scr "svr.4BitGoDot@  @"
-modlen	!byte 15
-defmod	!pet "mod..NewPointer  "
-bcmod	!scr "mod..NewPointer@@"
+syslen	!byte 12
+defsys	!pet "sys.Explorer    "
+bcsys	!scr "sys.Explorer@   @"
+modlen	!byte 13
+defmod	!pet "mod..Toasters    "
+bcmod	!scr "mod..Toasters@   "
 patlen	!byte 0
-defpat	!pet "                "
+defpat	!fill 16,32
 ramlen	!byte 0
-defram	!pet "                "
+defram	!fill 16,32
 ptrlen	!byte 0
-defptr	!pet "                "
+defptr	!fill 16,32
 
 ; --------------------------------------- Default RAM Entries
 

@@ -1,0 +1,1511 @@
+
+!src "..\godotlib.lib"
+*	= $c000
+
+; ------------------------------------------------------------ 
+;
+; app.4BitViewer
+; goDos App to load and view GoDot 4Bit images
+;
+; 1.00, 17.08.17, first release
+;
+; ------------------------------------------------------------ 
+
+; ----------------------------------------- Equates
+
+	packbyte	= $ad	; constant
+	pport	= $01	; usually $36
+
+	filetype	= $30
+	counter	= $31
+	gbyte	= $33
+	brmerk	= $37
+	src	= $39
+	dst	= $3a
+	col00	= $3b
+	bbreite	= $3c
+	rrand	= $3e
+	adcnt	= $3f
+	skip	= $40
+	nr0	= $40
+	max	= $44
+	rstart	= max
+	rend	= max+1
+	cols	= $46
+	zp1	= $47
+	xbuf	= $48
+	rstep	= xbuf
+	hmzp	= $49
+	cmzp	= $4a
+	pbuf	= $4b
+
+	status	= $90
+	source	= $a6
+	dest	= $a8
+	vblock	= $aa
+	bitcnt	= $ac
+	source1	= $ae
+	dest1	= $b2
+	offx	= $b2
+	offy	= offx+1
+	hold	= $b4
+	vblock1	= $b5
+
+	hist1	= $3f40
+	hist	= $3f50
+	etab	= $3f70
+	htab	= $3f80
+	htab0	= $3f90
+	rtab	= $3fb0
+
+	oszi3	= $d40e
+	wave	= $d412
+	filter	= $d418
+	rausch	= $d41b
+
+	grafreg	= $d011
+	sprreg	= $d015
+	multreg	= $d016
+	charreg	= $d018
+	border	= $d020
+	backgr	= $d021
+
+	cstart	= $fe0b
+	vram1	= $de0b
+	vram2	= $ee0b
+
+; ----------------------------------------- Header
+
+header	jmp start
+	!by $80		; goDos App
+	!by 0		; no own requester
+	!by 1		; dirty
+	!wo modend
+	!by 1		; App-Number
+used	!by $ff		; Flag for behaviour
+	!pet "4bit ldr&viewer "
+	!pet "1.00"
+	!pet "17.08.17"
+	!pet "A.Dettke        "
+
+; ----------------------------------------- Leave Module
+
+jrequ	jmp requ
+jerror	jmp error
+jview	jsr evdisp2
+
+cancel	lda #$ff
+	sta used
+cn2	sec
+	rts
+
+; ----------------------------------------- Main
+
+start	ldx #0
+	stx sc_texttab+1
+	ldx used		; first call?
+	bmi jrequ		; yes, pre-requester
+	beq cancel	; error and finished
+	cpx #2
+	beq jview
+	cpx #3		; all finished?
+	bcs cancel
+
+st0	ldy #0		; init width and copy of
+	sty breite	; width ("breite" means width)
+	sty breite+1
+	sty bbreite
+	sty bbreite+1
+	sty filetype	; init filetype
+	jsr setfull	; init addresses
+	jsr gd_sproff	; Sprites off
+
+ob7	jsr gd_xopen	; open File
+	jsr onebyte	; get first byte ("G")
+	bne jerror	; on error: break
+	tay		; when $00:
+	beq ld60		; uncompressed
+	jsr onebyte	; otherwise: get "O"...
+	bne jerror
+	jsr onebyte	; and "D"
+	bne jerror
+ld60	jsr onebyte	; finally "0" or "1"
+	bne jerror
+	sta filetype	; store as filetype
+	tya
+	bne ld61
+	sta filetype
+ld61	asl filetype	; make it more conveniently
+	lda filetype
+	and #2		; Clipfile?
+	beq ob50
+	jsr getfclip	; yes, get data
+	lda clpbr		; new width for Full
+	sta brmerk
+	jsr gbh2		; compute width
+
+ob50	jsr setfullscr	; set parameters for full 4bit
+
+ld62	jsr gd_clrms	; prepare Activity display
+	stx counter
+	stx counter+1
+	stx offy
+	inx
+	stx adcnt
+	lda #7
+	sta offx
+
+; ----------------------------------------- get Image
+
+ld0	ldx breite	; Bytecounter for 1 true row
+	stx ls_vekta8
+	ldy breite+1
+	sty ls_vekta8+1
+	ldx bbreite	; counter for clip
+	stx skip
+	ldy bbreite+1
+	sty skip+1
+
+ld01	ldy #0
+	jsr readdisk	; get data byte 
+	ldx status	; Floppy error?
+	bne ld5		; yes, break
+	tax
+	lda skip		; Skip? ("into Clip")
+	ora skip+1
+	beq ld1
+	txa
+	sta (sc_texttab),y	; no, result to 4Bit 
+	inc sc_texttab	; increment vector
+	bne ld10
+	inc sc_texttab+1
+ld10	lda skip		; Skip counter
+	bne ld11
+	dec skip+1
+ld11	dec skip
+
+; ----------------------------------------- Activity
+
+	dec adcnt 
+	bne ld1
+	lda #200
+	sta adcnt
+	ldy offy
+	cpy #22
+	bne +
+	jsr clrmess
++	ldx offx
+	lda filltab,x
+	sta mess,y
+	jsr messout
+	dec offx
+	bpl ld1
+	inc offy
+	lda #7
+	sta offx
+
+; ----------------------------------------- 
+
+ld1	lda ls_vekta8	; count bytes (one row)
+	bne ld2
+	dec ls_vekta8+1
+ld2	dec ls_vekta8
+ld4	lda status	; Floppy error?
+	bne ld5		; no, continue
+	lda ls_vekta8
+	ora ls_vekta8+1
+	bne ld01		; row finished when 0
+
+	clc		; next row $500 below
+	lda dst+1
+	adc #5
+	sta dst+1
+	sta sc_texttab+1
+	lda dst
+	sta sc_texttab
+	dec hoehe		; File finished when 0
+	beq ld5
+	jmp ld0
+
+; ----------------------------------------- epilogue
+
+ld5	jsr gd_xclose	; close file
+	jsr gd_xmess	; show Floppy status
+ld7	jsr gd_spron	; Sprites on
+
+	jsr clrmess
+
+	jmp cancel	; finished
+
+; ----------------------------------------- Subroutines
+
+messout	ldx #<(message)
+	ldy #>(message)
+	jmp gd_xtxout2
+
+clrmess   ldx #20		; clear gauge bar
+	lda #32
+cl0	sta mess,x
+	dex
+	bpl cl0
+	ldy #0		; init counters
+	ldx #7	
+	sty offy
+	stx offx
+	rts
+
+error	jsr ld5
+	clc
+	rts
+
+onebyte	jsr basin
+	ldx status
+	rts
+
+; ----------------------------------------- Variables
+
+clpzl	!by 0
+clpsp	!by 0
+clpbr	!by 40
+clpho	!by 25
+mclip	!by 0,0,40,25
+full	!by 0,0,40,25
+breite	!wo 0
+hoehe	!by 25
+list	!by $00,$00
+bktmp	!by 0
+pdis	!by 0
+
+; ----------------------------------------- 
+
+filltab	!by 160,93,103,127,126,124,105,109
+message	!scr " Reading  "
+mess	!fill 22,32
+	!by 0
+
+; ----------------------------------------- Display File Requester
+
+requ	ldx #0
+	stx status
+	inx		; otherwise: open file requester for load
+	stx used		; used=1
+	jsr start
+	lda ls_vekta8	; image loaded completely?
+	ora ls_vekta8+1
+	bne +		; then view it
+view	jsr evdisplay
++	jmp cancel
+
+
+; ----------------------------------------- Read Floppy File/decompress
+
+readdisk	lda counter	; repeated byte?
+	ora counter+1
+	bne getit2	; yes, re-get value
+
+	inc counter	; no, counter to 1
+	jsr basin		; get 1 byte
+	cmp #packbyte	; compression flag? (=$ad)
+	bne getit1	; no
+
+	bit filetype	; file compressed?
+	bvc getit1	; no
+
+	jsr basin		; compressed: get counter
+	sta counter
+	beq rb2		; $00 equals 256 bytes
+	lda #0
+	beq rb3
+rb2	lda #1
+rb3	sta counter+1
+	jsr basin		; get byte to compress
+
+getit1	sta gbyte		; and store
+
+getit2	lda counter	; count repetition
+	bne rb4
+	dec counter+1
+rb4	dec counter
+	lda gbyte		; re-get byte
+	rts
+
+; ----------------------------------------- Read Clip values
+
+jerror2	jmp error
+
+getfclip	jsr onebyte	; row
+	bne jerror2	; break on error
+	sta clpzl
+	jsr onebyte	; column
+	bne jerror2
+	sta clpsp
+	jsr onebyte	; width
+	bne jerror2
+gf1	sta clpbr
+	jsr onebyte	; height
+	bne jerror2
+	cmp #25		; too high? (Big Clip)
+	bcc gf0
+	lda #25		; set delimiter value
+gf0	sta clpho
+	rts
+
+; ----------------------------------------- set Full (Screen)
+
+setfull	lda filetype	; true Clip?
+	ldx full+2
+	and #2
+	beq gm9		; no
+	ldx brmerk	; else: save width
+gm9	ldy #3
+gm0	lda full,y
+	sta mclip,y
+	sta clpzl,y
+	dey
+	bpl gm0
+	jsr setclip
+	lda full+3	; height 25
+	sta hoehe
+	txa
+	sta rrand		; right border 40 or width
+	jmp gbh2		; compute width (breite) and skip (bbreite)
+
+; ---------------------------------------- Start address of Clip
+
+setclip	lda #$40		; $4000
+	sta sc_texttab+1
+	ldy #0
+	sty sc_texttab 
+stcl	lda mclip		; plus row * 1280
+	beq scp1
+	sta clpzl
+scp4	clc
+	lda sc_texttab+1
+	adc #5
+	sta sc_texttab+1
+	dec clpzl
+	bne scp4
+
+scp1	lda mclip+1	; plus column * 32
+	beq scp5
+	sta clpsp
+scp6	clc
+	lda sc_texttab
+	adc #$20
+	sta sc_texttab
+	bcc scp7
+	inc sc_texttab+1
+scp7	dec clpsp
+	bne scp6		; makes start address 
+
+scp5	lda sc_texttab
+	ldy sc_texttab+1
+	sta dst
+	sty dst+1
+	rts 
+
+; ----------------------------------------- set full 4bit values
+
+setfullscr
+	ldy #3		; row and column from full
+gm41	lda full,y
+	sta mclip,y
+	dey
+	bpl gm41
+	lda full+2	; right border = 40
+	sta rrand
+	lda sc_lastclpzl+1	; ignore GoDot clip
+	pha
+	lda #0		; overwrite instead by left border 
+	sta sc_lastclpzl+1
+	lda clpho
+	jsr gm7		; width and height from file
+	pla		; re-get GoDot clip 
+	sta sc_lastclpzl+1
+	rts
+
+gm7	ldx clpbr		; width from file
+	sta hoehe
+	jsr getbbr	; compute surplus (bbreite)
+gm6	jsr getbr		; compute true width (breite)
+	beq setclip	; (=jmp setclip)
+
+; ----------------------------------------- Get image width
+
+getbr	ldy #0		; .x is amount of tiles
+	sty breite
+	sty breite+1
+gbh0	clc		; width * 32
+	lda breite
+	adc #$20
+	sta breite
+	bcc gbh1
+	inc breite+1
+gbh1	dex
+	bne gbh0		; makes counter for width 
+	rts
+
+; ----------------------------------------- true width of Clip
+
+getbbr	stx brmerk	; save width
+	txa
+	clc
+	adc sc_lastclpzl+1	; width plus start too wide?
+	cmp rrand
+	bcc gbh2
+	lda rrand		; yes, delimit
+	sec
+	sbc sc_lastclpzl+1
+
+gbh2	tax		; .a (amount of tiles) times 32
+	jsr getbr
+	lda breite	; result
+	sta bbreite	; and store
+	lda breite+1
+	sta bbreite+1
+
+	ldx brmerk	; re-get width
+	rts
+
+; -------------------------------------------------- 
+; -------------------------------------------------- Show graphics
+; -------------------------------------------------- 
+
+redisplay	ldx gr_palette	; bordercolor is palette entry 0
+	stx border
+	jsr setcolors	; reget colors
+	lda gr_cmode	; which graphics mode?
+	beq dp4
+	lda #$18		; multi when 2
+	sta multreg
+dp4	lda #$1b		; hires when 0
+	sta charreg
+	lda #$3b
+	sta grafreg
+	lda gr_redisp	; image already rendered?
+	bne dp3
+	sta sc_keyprs	; yes, clear keypressed
+	pla		; clear stack
+	pla
+dp1	lda sc_keyprs	; wait for key or STOP
+	ora sc_stop
+	beq dp1
+	jsr getcolors	; save colors
+	jsr tmode		; switch textmode on
+	lda sc_screenvek	; save vector to current screenlist
+	pha
+	lda sc_screenvek+1
+	pha
+	lda pdis		; is palette requester working?
+	beq dp5
+	ldx list		; yes, rebuild main screen
+	ldy list+1
+	jsr gd_screen
+dp5	pla		; rebuild palette requester
+	tay
+	pla
+	tax
+	jsr gd_screen
+dp3	clc		; finished (stay in list)
+	rts
+
+; -------------------------------------------------- Switch Textmode on
+
+tmode	ldx #$13
+	lda #$1b
+	stx charreg
+	sta grafreg
+	lda #$08
+	sta multreg
+	lda sc_normtext
+	sta border
+	lda sc_maincolor
+	sta backgr
+	rts
+
+; -------------------------------------------------- Graphics Colors Management
+
+setcveks	sei		; called from GETCOLORS
+	lda #$35		; set C64 to IO off
+	sta pport
+	lda #>(cstart)	; first: save 1000 color RAM nibbles to loader area
+	ldx #$d8		; from $d800
+	bne scv0
+setbveks	lda #>(vram1)	; second: save upper 500 video RAM bytes to saver area
+	ldx #$04		; from $0400
+	dec pport		; set C64 completely to RAM
+scv0	stx dest1+1
+	ldy #$00
+	sty sc_merk
+	sty dest1
+	dey
+setlast	sty gr_bkcol	; third: save lower 500 video RAM bytes to module area
+	ldy #<(cstart)
+	sty sc_vekt20	; vector to data
+	sta sc_vekt20+1
+	lda #<(500)	; counter
+	sta ls_vekta8
+	lda #>(500)
+	sta ls_vekta8+1
+	ldy #$00
+	rts
+
+; -------------------------------------------------- Counters
+
+count	inc sc_vekt20	; increment source data vector
+	bne cou5
+	inc sc_vekt20+1
+cou5	inc dest1		; increment destination data vector
+	bne cou6
+	inc dest1+1
+cou6	lda ls_vekta8	; decrement counter
+	bne cou7
+	dec ls_vekta8+1
+cou7	dec ls_vekta8
+	lda ls_vekta8	; until zero
+	ora ls_vekta8+1
+	rts
+
+; -------------------------------------------------- Save Graphics Colors
+
+getcolors	jsr setcveks	; set vectors accordingly
+stco	lda (dest1),y	; compress $d800-nibbles
+	sta sc_merk
+	inc dest1
+	bne stc0
+	inc dest1+1
+stc0	lda (dest1),y
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	lda sc_merk
+	sta (sc_vekt20),y	; and buffer them
+	jsr count
+	bne stco
+
+	jsr setbveks	; buffer video RAM, part 1
+stc1	lda (dest1),y
+	sta (sc_vekt20),y
+	jsr count
+	bne stc1
+	ldy gr_bkcol	; flag: last time?
+	bpl scv1		; yes, finished
+
+	ldy #$00		; buffer video RAM, part 2
+	lda #>(vram2)
+	jsr setlast
+	beq stc1		; unconditional branch
+
+scv1	lda #$36		; set C64 to BASIC off
+	sta pport
+	cli
+	lda backgr	; set graphics background color value
+	and #$0f
+	sta gr_bkcol
+	rts
+
+; -------------------------------------------------- Restore Graphics Colors
+
+setcolors	lda gr_bkcol	; restore background color
+	sta backgr
+	pha		; save for last time
+
+	jsr setcveks	; set vectors accordingly
+stc2	sty sc_merk	; decompress color RAM nibbles
+	lda (sc_vekt20),y
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	lsr
+	rol sc_merk
+	sta (dest1),y	; and store them
+	inc dest1
+	bne stc3
+	inc dest1+1
+stc3	lda sc_merk
+	sta (dest1),y
+	jsr count
+	bne stc2
+
+	jsr setbveks	; restore video RAM, part 1
+stc4	lda (sc_vekt20),y
+	sta (dest1),y
+	jsr count
+	bne stc4
+
+	ldy gr_bkcol	; flag: last time?
+	bpl scv1		; yes, finished
+
+	pla		; restore video RAM, part 2
+	tay
+	lda #>(vram2)
+	jsr setlast
+	beq stc4
+
+; -------------------------------------------------- 
+; -------------------------------------------------- Event Re-Display Graphics
+; -------------------------------------------------- 
+
+evdisp2	lda gr_redisp	; save current re-display status
+	pha
+	ldx #$01		; force re-display
+	stx gr_redisp
+	dex		; clear STOP key
+	stx sc_stop
+	jsr redisplay	; re-display
+	jsr dp1		; wait for keypress
+	pla		; restore redisp status
+	sta gr_redisp
+	rts
+
+; -------------------------------------------------- Event Display Graphics
+
+evdisplay	jsr redisplay	; display graphics
+
+	lda #$80		; initialize noise (random) values
+	sta filter
+	sta oszi3
+	sta oszi3+1
+	lda #$00
+	sta wave
+	sta sc_stop
+	lda #$81
+	sta wave
+
+	lda gr_howmany	; number of colors to be rendered
+	sta hmzp		; store in zeropage
+	lda gr_cmode	; get graphics mode
+	sta cmzp		; and store to zeropage
+	jsr setvecs	; initialize all vectors and values
+	jsr v_setclip	; compute startaddress of clip
+
+	lda dest		; destination ($2000)
+	ldx dest+1
+	sta dest1
+	stx dest1+1
+	jsr clrclip	; clear clip area and provide histograms
+
+	lda source	; source ($4000)
+	ldx source+1
+	sta source1
+	stx source1+1
+	lda vblock	; video RAM ($0400)
+	ldx vblock+1
+	sta vblock1
+	stx vblock1+1
+
+	ldx gr_dither	; set vector of current dither routine
+	lda routtablo,x
+	sta sc_pos
+	lda routtabhi,x
+	sta sc_pos+1
+
+; -------------------------------------------------- 
+
+mainpix	lda sc_clipho	; height
+	sta sc_ho
+dhb4	lda sc_clipbr	; width
+	sta sc_br
+
+dhb1	clc
+	lda #$00		; init indeces
+	sta sc_merk
+	sta sc_merk+1
+dhb01	jsr histo		; compute histogram for 1 tile
+
+dhb0	ldy sc_merk	; get first byte (2 4bit pixels)
+	lda (source),y
+	pha
+	ldy cmzp		; color mode
+	bne mcskip	; multi?
+	lsr		; no hires, get first 4b pixel (left)
+	lsr
+	lsr
+	lsr
+mcskip	and #$0f		; isolate 4b pixel
+	tax		; care for balancing (gray: contrast/brightness)
+	lda gr_btab,x
+	ldy sc_merk+1	; index for "Ordered" pattern
+	jsr pixel		; dither, returns a bitpattern
+	and bitcnt	; isolate bitmap pixel position
+	ora (dest),y	; and set bm pixel
+	sta (dest),y
+	lsr bitcnt	; next bm pixel position
+
+	pla		; re-get 4bit byte (right pixel)
+	and #$0f		; isolate 4b pixel
+	tax
+	lda gr_btab,x	; balancing, .y still valid
+	jsr pixel		; dither, returns a bitpattern
+	and bitcnt	; isolate bm pixel
+	ora (dest),y	; and set 
+	sta (dest),y
+
+	inc sc_merk	; inc index into tile
+	lsr bitcnt	; next pixel position
+	bcc dhb0
+
+	ror bitcnt	; 8 pixels finished, reset mask
+	inc sc_merk+1	; inc index into Ordered pattern
+	lda sc_merk+1
+	cmp #$08		; 8 scanlines finished?
+	bcc dhb01
+
+	inc vblock	; yes, next tile:
+	bne dhb21
+	inc vblock+1
+
+dhb21	clc		; add 8 to dest vector
+	adc dest
+	sta dest
+	bcc dhb2
+	inc dest+1
+dhb2	clc		; add 32 to source vector
+	lda #$20
+	adc source
+	sta source
+	bcc dhb3
+	inc source+1
+
+dhb3	lda sc_stop	; STOP pressed?
+	bne break		; yes, break
+
+	dec sc_br		; decrement width value
+	bne dhb1		; until zero
+
+; -------------------------------------------------- 
+
+	clc		; to tile below first:
+	lda vblock1	; add 40 to video RAM
+	adc #$28
+	sta vblock1
+	sta vblock
+	lda vblock1+1
+	adc #$00
+	sta vblock1+1
+	sta vblock+1
+	clc		; add 320 to dest
+	lda dest1
+	adc #$40
+	sta dest1
+	sta dest
+	lda dest1+1
+	adc #$01
+	sta dest1+1
+	sta dest+1
+	clc		; add 1280 to source
+	lda source1+1
+	adc #$05
+	sta source1+1
+	sta source+1
+	lda source1
+	sta source
+
+	dec sc_ho		; dec height
+	beq dhb9		; until zero
+
+	jmp dhb4		; else loop
+
+; -------------------------------------------------- 
+
+break	sta gr_redisp	; force re-render
+	sta sc_keyprs	; simulate keypressed
+dhb9	jmp dp1		; end sequence (graphics off...)
+
+; -------------------------------------------------- 
+; -------------------------------------------------- Dither Routines
+; -------------------------------------------------- 
+
+pixel	jmp (sc_pos)	; entry for dither routines
+
+; -------------------------------------------------- Compute Clip data
+
+v_setclip	lda sc_clipzl	; row of clip
+	beq vscp1		; zero?
+
+	sta sc_zl		; no, increment video RAM by 40
+vscp4	clc
+	lda vblock
+	adc #$28
+	sta vblock
+	bcc scp2
+	inc vblock+1
+scp2	clc		; increment dest by 320
+	lda dest
+	adc #$40
+	sta dest
+	lda dest+1
+	adc #$01
+	sta dest+1
+	clc		; increment source by 1280
+	lda source+1
+	adc #$05
+	sta source+1
+	dec sc_zl		; as many times as vertically indented
+	bne vscp4
+
+vscp1	lda sc_clipsp	; column of clip
+	beq vscp5		; zero?
+
+	sta sc_sp
+scp8	inc vblock	; no, inc video by 1
+	bne scp81
+	inc vblock+1
+scp81	clc		; inc dest by 8
+	lda dest
+	adc #$08
+	sta dest
+	bcc vscp6
+	inc dest+1
+vscp6	clc		; inc source by 32
+	lda source
+	adc #$20
+	sta source
+	bcc vscp7
+	inc source+1
+vscp7	dec sc_sp		; as many times as horizontally indented
+	bne scp8
+
+vscp5	rts
+
+; -------------------------------------------------- Dith type: No Dither
+
+dithoff	tax		; regard quantization table
+	lda gr_qtab,x
+	tax		; get appropriate pixel pattern ($0 or $f)
+	lda htab,x
+	rts
+
+; -------------------------------------------------- Dith type: Ordered 
+
+dithhab	sta zp1
+	tax		; regard quantized colors
+	lda rtab,x
+	ora offs,y	; compute offset into pattern
+	tax
+	lda gr_orderedpat,x	; get pixel pattern
+	jmp dh1		; regard graphics mode
+
+; -------------------------------------------------- Dith type: Pattern
+
+dithpat	sta zp1
+	sty hold		; save .y (pattern index)
+	tax
+	lda rtab,x	; regard quantized colors
+	asl		; times 8
+	asl
+	asl
+	ora hold		; regard index
+	tax
+	lda gr_pattern,x	; get pixel pattern
+
+dh1	ldx cmzp		; grahics mode?
+	beq dp0
+	and #$0f		; if multi:
+	tax		; get appropriate pixel pattern
+	lda mcpat,x
+dp0	ldx zp1		; get original value
+	and bitcnt	; isolate bm pixel
+	beq bgr		; not set?
+	bne fgr		; set?
+
+; -------------------------------------------------- Dith type: Random
+
+dithrnd	tax
+	lda rtab,x	; regard quantized colors
+	beq bgr
+	cmp #8		; threshold: 8
+	bcs fgr
+
+	lda rtab+1,x	; regard neighboring color
+	beq dr0
+	cmp #8
+	bcc bgr
+
+dr0	jsr getrnd	; get random value
+rold	lda zp1
+	and #1
+	beq bgr		; even?
+	bne fgr		; odd?
+
+; -------------------------------------------------- Dith type: Noise
+
+dithnoi	tax
+	lda rtab,x	; regard quantized colors
+	beq bgr
+	sta hold		; no threshold
+	jsr getrnd	; get random value
+nold	lda hold
+	cmp zp1		; bigger?
+	bcs fgr
+
+; -------------------------------------------------- 
+
+bgr	lda htab0,x	; pixel not set, get pixel pattern
+	rts
+
+fgr	lda htab,x	; pixel set, get pixel pattern
+	rts
+
+; -------------------------------------------------- Get Random Value
+
+getrnd	lda cmzp		; graphics mode?
+	beq gr00
+	lda bitcnt	; multi, isolate right pixels
+	and #$55
+	bne gr01
+gr00	lda rausch	; hires, get random value
+	and #15		; delimit to 15
+	sta zp1
+gr01	rts
+
+; -------------------------------------------------- 
+; -------------------------------------------------- Clip Routines
+; -------------------------------------------------- 
+
+
+; -------------------------------------------------- Get start values
+
+setvecs	lda #$00
+	sta sc_keyprs	; clear keyboard
+	sta gr_redisp	; clear re-render flag
+	sta vblock	; low bytes all $00
+	sta source
+	sta dest
+	lda sc_clipped	; any clip set?
+	bne sv0		; yes, don't change values
+
+	sta sc_clipzl	; no, values to 0,0,40,25
+	sta sc_clipsp
+	lda #$19
+	sta sc_clipho
+	lda #$28
+	sta sc_clipbr
+
+sv0	lda #$80		; init bitmask for pixel pattern
+	sta bitcnt
+	lsr		; source from $4000
+	sta source+1
+	lsr		; dest from $2000
+	sta dest+1
+	lda #$04		; video from $0400
+	sta vblock+1
+	rts
+
+; -------------------------------------------------- Clear Clip Area
+
+clrclip	ldx sc_clipho	; height of clip
+	ldy #$00
+
+cc2	sty sc_pos+1
+	lda sc_clipbr	; width of clip times 8
+	asl
+	asl
+	asl
+	bcc cc3
+	inc sc_pos+1
+cc3	sta sc_pos
+
+	lda dest		; save dest
+	pha
+	lda dest+1
+	pha
+
+cc0	tya		; .y=0 
+	sta (dest),y	; clear bytes (to black)
+	inc dest
+	bne cc1
+	inc dest+1
+cc1	lda sc_pos	; count width
+	bne cc4
+	dec sc_pos+1
+cc4	dec sc_pos
+	lda sc_pos	; until 0
+	ora sc_pos+1
+	bne cc0
+
+	pla
+	sta dest+1
+	pla
+	clc		; add 320 to dest
+	adc #$40
+	sta dest
+	lda dest+1
+	adc #$01
+	sta dest+1
+	dex		; decrement height
+	bne cc2
+
+	lda dest1		; restore dest
+	ldx dest1+1
+	sta dest
+	stx dest+1
+
+; -------------------------------------------------- 
+
+	lda gr_dither	; any dither?
+	beq hist0		; no, compute histograms
+
+	lda hmzp		; yes, get number of colors/grays
+	cmp #$02		; b&w?
+	bne makeetab	; no, create etab and compute histograms
+
+; -------------------------------------------------- 
+
+	lda cmzp		; yes, b&w, graphics mode?
+	beq mcb
+	lda #$55		; multi, get pattern $55
+	!by $2c
+mcb	lda #$ff		; hires, pattern $ff
+	ldy #$0f
+
+hm2l	sta htab,y	; put to table of pixel patterns
+	eor #$ff
+	sta htab0,y
+	eor #$ff
+	tax
+	tya
+	sta rtab,y	; put to table of quantized colors
+	txa
+	dey
+	bpl hm2l
+
+	lda gr_palette+1	; get neighboring color
+	asl		; shift to upper nibble
+	asl
+	asl
+	asl
+	ora gr_palette	; or with color
+	sta pbuf		; store value (faster rendering now)
+	rts
+
+; -------------------------------------------------- 
+
+makeetab	ldy #$01
+	ldx #$00
+etl	lda gr_qtab,y	; compare neighboring values in quantization table
+	cmp gr_qtab-1,y
+	beq ets		; if equal, ignore
+	tya
+	sta etab,x	; if not, set position of change to etab
+	inx
+ets	iny
+	cpy #$10
+	bne etl
+
+; -------------------------------------------------- Make Histograms
+
+hist0	ldx #$2f		; clear histograms
+	stx col00+4
+	jsr clh1
+
+	sta src		; start from $4000
+	lda #$40
+	sta src+1
+	lda cmzp		; get graphics mode
+	beq hi01
+	lda #$aa		; is multi: change bits
+hi01	sta bits+2
+	beq hready	; finished when hires
+
+	lda sc_clipped	; any clip?
+	beq hloop		; no, proceed
+
+	ldy hmzp		; yes, number of colors/grays
+	dey
+cll1	lda gr_palette,y	; background color part of palette?
+	cmp backgr
+	beq cls1		; yes, store index
+	dey
+	bpl cll1
+	ldy #$20		; no, set flag
+cls1	sty bktmp
+hready	rts		; no histograms when clipped
+
+; -------------------------------------------------- Histograms for Multi Mode
+
+hloop	jsr clrhist1	; clear histogram1
+
+	ldy #$1f		; retrieve colors
+l1	lda (src),y
+	and #$0f
+	tax
+	lda gr_btab,x	; regard balancing and quantization
+	tax
+	lda gr_qtab,x
+	tax
+	inc hist1,x
+	dey
+	bpl l1
+
+	ldy #$00		; how many colors per tile?
+	ldx hmzp
+	dex
+	sty col00
+l2	lda hist1,x
+	beq s11
+	iny
+s11	dex
+	bpl l2
+	cpy #$04		; less than 4?
+	bcc s2		; yes, proceed
+
+	ldx hmzp		; no, count colors in these particular tiles
+	dex
+l3	lda hist1,x
+	beq s3
+	clc
+	adc hist,x
+	sta hist,x
+	bcc s3
+	inc hist+16,x
+s3	dex
+	bpl l3
+
+s2	lda src		; next tile
+	clc
+	adc #$20
+	sta src
+	bcc hloop
+	inc src+1
+s4 	lda src+1
+	cmp #$bd		; end of 4bit?
+	bne hloop
+
+; -------------------------------------------------- 
+
+	lda #$00		; yes, retrieve most frequent color
+	sta max
+	sta max+1
+	ldx hmzp
+	dex
+l4	lda hist+16,x
+	tay
+	cmp max+1
+	bcc s5
+	beq s51
+	lda hist,x
+	bcs s52
+s51	lda hist,x
+	cmp max
+	bcc s5
+	beq s5
+s52	sta max
+	sty max+1
+	stx col00		; contains most frequent color
+s5	dex
+	bpl l4
+
+	lda col00		; result becomes background color
+	tax
+	lda gr_palette,x
+	stx bktmp
+	sta backgr
+	rts
+
+; -------------------------------------------------- 
+
+clrhist1	ldx hmzp
+	dex
+clh1	lda #$00
+l5	sta hist1,x
+	dex
+	bpl l5
+	rts
+
+; -------------------------------------------------- Decide which colors per tile
+
+histo	lda gr_dither	; any dither?
+	beq dohist	; no, histogram
+
+	lda hmzp		; b&w?
+	cmp #2
+	bne dohist	; no, histogram
+
+	lda pbuf		; yes, get precomputed colors
+	ldy #0
+	sta (vblock),y
+	rts
+
+; -------------------------------------------------- 
+
+dohist	jsr clrhist1	; clear histogram
+
+	ldy #$20		; preset values (impossible value 32)
+	sty col00+3
+	sty col00+2
+	sty col00+1
+	dey
+
+l6	lda (source),y	; count colors
+	pha
+	and #$0f
+	tax
+	lda gr_btab,x
+	tax
+	lda gr_qtab,x
+	tax
+	inc hist1,x
+	pla
+	ldx cmzp
+	bne s6
+	lsr
+	lsr
+	lsr
+	lsr
+	tax
+	lda gr_btab,x
+	tax
+	lda gr_qtab,x
+	tax
+	inc hist1,x
+s6	dey		; within 64 pixels
+	bpl l6
+
+	ldy cmzp		; graphics mode
+	beq s7
+
+	ldx bktmp		; is multi:
+	stx col00
+	lda #$00		; don't regard background color
+	sta hist1,x
+	sta nr0
+s7	ldx #$03
+l7	 ldy #$00
+	sty max
+	lda bits,x
+	sta nr0,x
+l8	lda hist1,y
+	beq s8
+	cmp max
+	bcc s8
+	sta max
+	sty col00,x	; get 3 most frequent colors
+s8	iny
+	cpy hmzp
+	bne l8
+	ldy col00,x	; don't regard processed colors
+	lda #$00
+	sta hist1,y
+	dex
+	bne l7
+
+; -------------------------------------------------- Set Colors
+
+	ldy #$00
+	lda cmzp		; graphics mode
+	beq mc1
+
+	lda col00+1	; is multi: get video RAM colors
+	and #$0f
+	tax
+	lda gr_palette,x
+	asl
+	asl
+	asl
+	asl
+	sta cols
+	lda col00+2
+	and #$0f
+	tax
+	lda gr_palette,x
+	ora cols
+	sta (vblock),y	; and set
+
+	lda vblock+1	; color 3 to color RAM
+	pha
+	clc
+	adc #$d4
+	sta vblock+1
+	lda col00+3
+	and #$0f
+	tax
+	lda gr_palette,x
+	sta (vblock),y
+	pla
+	sta vblock+1
+	bne mc2		; unconditional branch
+
+mc1	ldx col00+2	; is hires: get video RAM colors
+	cpx #$20		; only 1 color in tile?
+	bne ms1
+	ldx col00+3	; yes, get neighboring color for background
+	inx
+	cpx hmzp
+	bne ms2
+	dex
+	dex
+ms2	stx col00+2
+
+ms1	lda col00+3	; sort colors (when hires)
+	cmp col00+2
+	bpl nosort
+	ldx col00+2
+	sta col00+2
+	stx col00+3
+	txa
+nosort	and #$0f
+	tax
+	lda gr_palette,x
+	asl
+	asl
+	asl
+	asl
+	sta cols
+	lda col00+2
+	and #$0f
+	tax
+	lda gr_palette,x
+	ora cols
+	sta (vblock),y	; and set
+	jmp makehtab	; make pattern table
+
+mc2	ldx #$00		; sort colors (when multi)
+lx	stx xbuf
+	ldy #$03
+ly	lda col00,x
+	cmp col00,y
+	bcc s9
+	beq s9
+	pha
+	lda col00,y
+	sta col00,x
+	pla
+	sta col00,y
+	lda nr0,x
+	pha
+	lda nr0,y
+	sta nr0,x
+	pla
+	sta nr0,y
+s9	dey
+	cpy xbuf
+	bne ly
+	inx
+	cpx #$03
+	bne lx
+
+; -------------------------------------------------- Create Pixelpattern Table
+
+makehtab	lda gr_dither	; any dither?
+	bne makertab	; yes, branch
+
+	ldy #$ff
+	sty max
+	lda cmzp		; graphics mode
+	bne l9
+	ldy #$01		; is hires (.y=2)
+l9	iny		; is multi (.y=0)
+	lda col00,y	; compute average of 2 neighboring colors
+	clc
+	adc col00+1,y
+	lsr
+	cmp #$10
+	bcc s10
+	lda #$0f
+s10	sta max+1
+	lda nr0,y
+	ldx max
+l10	inx
+	sta htab,x	; fill table
+	cpx max+1
+	bcc l10
+	cpx #$0f
+	bcs l12
+	stx max
+	cpy #$03
+	bne l9
+l12	rts
+
+; -------------------------------------------------- Create transition patterns
+
+makertab	ldx #$00
+	lda cmzp		; graphics mode
+	bne mkt0
+	ldx #$02		; is hires (.x=2)
+mkt0	ldy #$00		; is multi (.x=0)
+mkt1	lda gr_qtab,y
+	cmp col00+1,x
+	bcs mkt2
+	lda nr0+1,x
+	sta htab,y
+	lda nr0,x
+	sta htab0,y
+	iny
+	cpy #$10
+	bne mkt1
+	beq mrt0
+mkt2	inx
+	cpx #$04
+	bne mkt1
+
+mrt0	ldy #$0f
+	lda #$00
+irl	sta rtab,y	; set pattern (transition between two neighboring colors)
+	dey
+	bpl irl
+
+	ldx #$00
+	lda cmzp
+	bne rtl0
+	ldx #2
+rtl0	lda col00,x
+	cmp #$20
+	bcs rts0
+	tay
+	lda etab,y
+	sta rstart
+	lda col00+1,x
+	cmp #$20
+	bcs rts0
+	tay
+	dey
+	lda etab,y
+	sta rend
+	sec
+	sbc rstart
+	beq rts1
+	tay
+	lda rdtab,y
+	sta rstep
+	ldy rstart
+	lda #$00
+rtl1	clc
+	adc rstep
+	pha
+	lsr
+	lsr
+	lsr
+	lsr
+	sta rtab,y
+	iny
+	cpy rend
+	pla
+	bcc rtl1
+rts1	inx
+	cpx #$04
+	bne rtl0
+rts0	rts
+
+; -------------------------------------------------- Pixel Patterns
+
+bits	!by $00,$55
+	!by $aa,$ff
+mcpat	!by $00,$03,$0c,$0f,$30,$33,$3c,$3f
+	!by $c0,$c3,$cc,$cf,$f0,$f3,$fc,$ff
+rdtab	!by $f0,$78,$50,$3c,$30,$28,$22
+	!by $1e,$1b,$18,$16,$14,$12,$11,$10
+
+routtablo	!by <(dithoff),<(dithhab),<(dithpat),<(dithnoi),<(dithrnd)
+routtabhi	!by >(dithoff),>(dithhab),>(dithpat),>(dithnoi),>(dithrnd)
+offs	!by $00,$10,$20,$30,$00,$10,$20,$30
+
+modend	!eof

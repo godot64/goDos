@@ -1970,9 +1970,9 @@ palcol	!byte 0,0,0,0,0,0,0,0
 	!byte 0,0,0,0,0,0,0,0
 lopal	!byte 0
 hipal	!byte 0
-ldrlen	!byte 13
-defldr	!pet "ldr.4BitGoDot   "
-bcldr	!scr "ldr.4BitGoDot@  @"
+ldrlen	!byte 14
+defldr	!pet "app.4BitViewer  "
+bcldr	!scr "app.4BitViewer@ @"
 syslen	!byte 12
 defsys	!pet "sys.Explorer    "
 bcsys	!scr "sys.Explorer@   @"

@@ -95,7 +95,7 @@ mal20	asl sc_pos
 	rol sc_pos+1
 mal10	asl sc_pos
 	rol sc_pos+1
-	lda sc_pos+1
+mal5	lda sc_pos+1
 	pha
 	lda sc_pos
 	pha
@@ -316,7 +316,7 @@ sc1	jsr setvektor
 	bne s1
 ready1	rts
 ;
-text0	asl		; End of list? ($80)
+text0	asl		; End of list? ($80) - hier: Patch für Shortcuts
 	bpl ready1	; yes, finished
 	jsr text2
 	bne m1
@@ -510,7 +510,7 @@ y0	lda #$03
 	dex
 	stx spritey-2
 ;
-tastatur	jsr checkkeyb	; use ROM via $028f/90 (check keyboard)
+tastatur	jsr checkkeyb	; use ROM via $028f/90 (check keyboard, über $ff9f nach $eb48)
 	lda sc_keyprs	; no key
 	beq stick
 	lda sy_tbuffer-1,x	; get key
@@ -1171,20 +1171,20 @@ getback	php		; save Carry flag
 
 ; ------------------------------------------ Display U&I Menu
 
-menu	jsr fill
+menu	jsr fill		; fill screen
 	ldx #<menulst	; display requester
 	ldy #>menulst
 	jsr screen
-	lda #15		; set normcolor to row
+	lda #18		; set normcolor to row
 	sta sc_zl
 	lda #2		; column
 	sta sc_sp
 	lda #10		; width
 	sta sc_br
-	lda #7		; height
+	lda #4		; height
 	sta sc_ho
 	ldy #0
-	ldx #2
+	ldx #2		; .x: index to normcolor
 	jmp fcol
 
 ; ------------------------------------------ Toggle Text in Gadget
@@ -1244,7 +1244,7 @@ fill:	lda #40		; width 40
 fillit:	sty sc_loop
 	jsr initmove	; compute screenaddress
 	ldx #2
-	lda #231		; get fill character
+	lda #$60		; get fill character (bisher $e7)
 	jsr fi0		; fill now
 	jmp fcol
 
@@ -2156,8 +2156,13 @@ ui_sys	jsr mainscr
 ; ------------------------------------------------ Event: Show Image
 
 ui_show	jsr mainscr
-	jsr ev_display
-	jmp mainscr
+	ldx modul+8	; App 4BitViewer is App #1
+	dex
+	bne +
+	lda #2
+	sta modul+9
+	jsr modul
++	jmp mainscr
 
 ; ------------------------------------------------ Event: Execute MOD
 
@@ -2165,64 +2170,77 @@ ui_exec	jsr mainscr
 	jsr ev_exec
 	jmp mainscr
 
+; -------------------------------------------------- Event: Submenu
+
+ui_submn	ldx #<smenulst
+	ldy #>smenulst
+	jsr screen
+	jsr gd_eloop
+	jmp ui_menu
+	
 ; -------------------------------------------------- 
 
 mainlst	!by 0
 	!by 22,0,7,3,$c0
 	!wo ui_menu
-	!scr "Start@"
+ml01	!scr "Start@"
 	!by 0,33,7,3,$a0
 	!wo 0
 	!scr " U&I @"
 	!by $80
 
-menulst	!by 0
-	!by 13,1,12,3,$00	; Separator
+menulst	!by $00		; $ff: mit Shortcuts!
+	!by 16,1,12,3,$00	; Separator
 	!wo 0
-	!by 14,1,12,3,$40	; Choose Loader
-	!wo ev_ldr
-	!by 15,1,12,3,$40	; Load
-	!wo ui_load
-	!by 16,1,12,3,$40	; Display
-	!wo ui_show
-	!by 17,1,12,3,$40	; Choose MOD
-	!wo ev_mod
-	!by 18,1,12,3,$40	; Exec
-	!wo ui_exec
-	!by 19,1,12,3,$40	; Explorer
+	!by 17,1,12,3,$40	; Explorer
 	!wo ui_sys
+	!by 18,1,12,3,$40	; Images
+	!wo ui_submn
+	!by 19,1,12,3,$40	; Exec
+	!wo ui_exec
 	!by 20,1,12,3,$40	; Exit
 	!wo ui_exit
 
-	!by 12,1,12,11,$90	; Titlebar
+	!by 15,1,12,9,$90	; Titlebar
 	!wo 0
 	!scr "goDos 0.99@"
 
-	!by 22,0,7,3,$c0
+	!by 22,0,7,3,$c0	; Start-Button
 	!wo se_cancel
 	!scr "Start@"
-	!by 0,33,7,3,$a0
+	!by 0,33,7,3,$a0	; Branding
 	!wo 0
 	!scr " U&I @"
 
-	!by $c0,13,1,10
-	!scr "----------@"
-	!by $c0,14,1,10
-	!scr "Find LDR  @"
-	!by $c0,15,1,10
-	!scr "Load Image@"
 	!by $c0,16,1,10
-	!scr "Show Image@"
-	!by $c0,17,1,10
-	!scr "Find MOD  @"
+	!scr "----------@"
+	!by $c0,17,1,8
+ml02	!scr "Explorer@"	; C=e
 	!by $c0,18,1,10
-	!scr "Execute it@"
+ml04	!scr "View Image@"	; C=s
 	!by $c0,19,1,8
-	!scr "Explorer@"
+ml06	!scr "Exec MOD@"	; C=m
 	!by $c0,20,1,4
-	!scr "Exit@"
+ml08	!scr "Exit@"	; C=x
 	!by $80
-	
+
+smenulst	!by 0
+	!by 16,10,11,3,$40
+	!wo ui_load
+	!by 17,10,11,3,$40
+	!wo ui_show
+	!by 18,10,11,3,$40
+	!wo se_cancel
+	!by 16,10,11,5,$00
+	!wo 0
+	!by $c0,16,10,9 
+	!scr "Load&View@"
+	!by $c0,17,10,9
+	!scr "Just View@"
+	!by $c0,18,10,5
+	!scr "Leave@"
+	!by $80
+
 ; -------------------------------------------------- 
 
 	!eof

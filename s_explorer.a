@@ -4,22 +4,10 @@
 
 ; ------------------------------------------------ 
 ;
-; mod..FileCopy
-; Systemmodul zur Arbeit mit Datenträgern 
-;
-; 1.04, 12.09.92
-; 1.05, 24.10.92
-; 1.06, 24.01.93, Schrittweite bei Copy-Gauge anpassen
-; 1.08, 26.08.94, Sysdrive RAM abfangen
-; 1.09, 30.03.95, CMD-Anpassungen
-; 1.11, 29.10.95, Bugfix in Scroll Routine
-; 1.12, 19.11.95, converted to ACME on 11.08.17
-;                 changed some minor things
-;
 ; sys.Explorer
 ; goDos System App for File Management
 ;
-; 1.00, 13.08.17, added Input routines
+; 1.00, 20.08.17, added Input routines
 ;
 ; ------------------------------------------------ 
 
@@ -27,6 +15,10 @@
 ; ------------------------------------------------ Declarations
 
 	pport		= $01
+	amrk		= $30		; /$31
+	lcnt		= $32
+	offout		= $33
+	bufoff		= $34
 	counter		= $39
 	stmerk		= $3b
 	xcnt		= $3c
@@ -37,11 +29,13 @@
 	tab		= $b0
 	offx		= ls_adrmisc
 	offy		= offx+1
+	icons		= $e0		; constant
 
 	shift		= $028d
 	devs		= $0fa2
 
 	sdw10		= $1558		; part of se_scup/dwn
+	ui_fill		= $17e0		; Fill Screen /w checkered backgr
 	dir4		= $1b69		; part of gd_dir
 	dspalte		= $1db3		; system dir window indent
 
@@ -63,28 +57,31 @@
 ; ------------------------------------------------ Header
 
 	jmp start
-	!by $40
+	!by $40			; system module
 	!by $00,$00
 	!wo modend
 	!wo 0
-	!pet "UI Explorer     "
+	!pet "U&I Explorer    "
 	!pet "1.00"
-	!pet "13.08.17"
+	!pet "20.08.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Main
 
-start	lda #0		; schwarzer Rahmen
-	sta rahmen
+start	lda #0
 	sta ls_dirmask
 	sta movefl
 	ldx ls_flen
 	stx aflen
 	ldx ls_showfiles
 	stx afiles
+	ldx sc_shadow
+	stx shdmk
+	ldx sc_normtext
+	stx sc_shadow
 	ldx ls_drive
 	stx adrive	; aktueller Drive: 12? (RAM)
-	cpx #12		; ### 1.08
+	cpx #12
 	bne st01
 	ldx ls_bootdrive	; dann: Bootdrive
 st01	sta ls_flen
@@ -98,10 +95,11 @@ st0	sta sdrive	; Source Drive setzen
 	txa 
 st1	sta ddrive	; Destination Drive setzen
 
-	ldx #<copylst	; UI ausgeben
-	ldy #>copylst
+	jsr ui_fill
+	ldx #<explrlst	; UI ausgeben
+	ldy #>explrlst
 	jsr gd_screen
-	jsr shddrv	; Drives zeigen
+	jsr shsdrv	; Drives zeigen
 
 	ldx #0
 	ldy sdrive
@@ -116,12 +114,12 @@ st1	sta ddrive	; Destination Drive setzen
 	sta ls_drive
 	lda aflen
 	sta ls_flen
-	lda sc_maincolor
-	sta rahmen
 	lda afiles
 	sta ls_showfiles
 	lda aswitch
 	sta gd_modswitch
+	lda shdmk
+	sta sc_shadow
 
 ; ------------------------------------------------ 
 
@@ -131,16 +129,16 @@ sevquit	sec 		; leave module
 ; ------------------------------------------------ Text Output Handler
 
 tabigad	!wo sdrv		;  0 Source Unit
-	!wo ddrv		;  2 Destination Unit
-	!wo header	;  4 Title Bar
-	!wo sels		;  6 Source Selector
-	!wo seld		;  8 Destination Selector
-	!wo blks		; 10 Blocks Free
-	!wo enoth		; 12 Error: Nothing selected
-	!wo enosp		; 14 Error: Not enough space
-	!wo eons		; 16 Error on Source
-	!wo eond		; 18 Error on Destination
-	!wo eopd		; 20 Error on Open
+	!wo header	;  2 Title Bar
+	!wo sels		;  4 Source Selector
+	!wo blks		;  6 Blocks Free
+	!wo enoth		;  8 Error: Nothing selected
+	!wo godout	; 10 Fileinfo: which Type
+	!wo nam2out	; 12 Fileinfo: which Name
+	!wo versout	; 14 Fileinfo: Version
+	!wo dateout	; 16 Fileinfo: Date
+	!wo aut2out	; 18 Fileinfo: which Author
+	!wo lenout	; 20 Fileinfo: Length
 
 settab	lda #<(tabigad)
 	sta sc_texttab
@@ -170,10 +168,6 @@ gt0	jsr gd_setpos
 
 shsdrv	ldy #0
 	lda sdrive	; select source
-	bne sh0
-
-shddrv	ldy #2
-	lda ddrive	; select destination
 
 sh0	sty which
 	pha 
@@ -195,23 +189,13 @@ sh0	sty which
 	ldy which
 	bne cls1
 	jsr offset	; mark active drive
-cls1	ldy #8
 
-	jsr b		; Selektor-Fenster Destination färben
-	ldy which
-	beq cls4
-	jsr offset	; mark active drive
-cls4	clc 
+cls1	clc 
 	rts 
 
 ; ------------------------------------------------ Show Status of Source
 
 sevsstat	lda sdrive
-	bne sds0
-
-; ------------------------------------------------ Show Status of Destination
-
-sevdstat	lda ddrive
 sds0	tay 
 	lda ls_drive
 	sty ls_drive
@@ -225,17 +209,17 @@ error	pha
 
 sevsdrive	ldx #0
 	lda #3
-sdr3	ldy #8
-	cmp sc_merk+1
+sdr3	ldy #8		; Drive-Nr. 8
+	cmp sc_merk+1	; Klick-Zeile kleiner als 3?
 	bcc sdr2
-	dec sc_merk
+	dec sc_merk	; Klick-Spalte 1?
 	beq sdr0
-	ldy #10
+	ldy #10		; Drive-Nr. 10
 	bne sdr0
-sdr2	iny 
+sdr2	iny 		; Drive-Nr. 9
 	dec sc_merk
 	beq sdr0
-	ldy #11
+	ldy #11		; Drive-Nr. 11
 
 sdr0	tya 
 	sta ls_drive
@@ -243,30 +227,13 @@ sdr0	tya
 	jsr gd_sproff
 	sta ls_flen
 	txa 
-	beq sdr1
-	jsr shddrv
-	jsr dirinfo
-	lda blksfree
-	sta disklen
-	lda blksfree+1
-	sta disklen+1
-	jmp ddir
 
 sdr1	jsr shsdrv
 	jsr dirinfo
-	jmp sdir
-
-; ------------------------------------------------ Event: Select Destinaton Drive
-
-sevddrive	jsr swap
-	ldx #1
-	lda #36
-	jsr sdr3
-	jmp swap
 
 ; ------------------------------------------------ Directory of Source
 
-sdir	lda #1
+sdir	lda #2
 	ldy sdrive	; Source
 sdir0	sta dspalte	; System-Indent fürs Dir-Fenster ändern
 	sty ls_drive
@@ -282,32 +249,107 @@ sdir3	lda ls_cblocks
 	sta block+$1e
 sdir1	lda #5		; System-Indent restaurieren
 	sta dspalte
-sdir2	clc 
-	rts 
 
-; ------------------------------------------------ Directory of Destination
+; ------------------------------------------------ Filetype-Info
 
-ddir	lda #23		; Dirfenster Destination löschen
-	ldy ddrive
-	bne sdir0
+typeinfo	sta sc_zl		; Zeile 5
+	ldx #1		; Breite 1
+	stx sc_br
+	ldy #0
+
+---	sty sc_loop
+	sta sc_sp		; Spalte 5
+	jsr gd_initmove
+
+	lda sc_vekt20	; Adresse-256 
+	ldx sc_vekt20+1
+	sta ls_adrmisc
+	dex
+	stx ls_adrmisc+1
+	lda (sc_vekt20),y
+	cmp #$2e		; "." an dieser Stelle?
+	bne ofile
+
+	ldx #42		; ja, Index in Typliste setzen
+--	lda #0		; Treffer auf 0
+	tay
+	sta match
+	lda #3
+	sta three		; Zähler für Typliste
+-	dec three
+	dey		; .y=$ff
+	lda (ls_adrmisc),y
+	dex
+	cmp types,x	; Vergleich
+	bne +		; unzutreffend?
+	inc match		; nein, Treffer
+	lda match
+	cmp #3		; schon 3?
+	beq showtype	; dann gefunden
++	lda three		; Types-Zähler auf 0?
+	bne -		; nein, nächster Vergleich
+	txa		; nächster Typ, Treffer auf 0, .y=$ff
+	bpl --		; sonst nächste Zeile
+
+contn	inc sc_zl
+	lda #5
+	ldy #0
+	ldx sc_zl
+	cpx #21
+	bne ---
+finish	clc
+	rts
+
+ofile	ldx #25		; Index in divdrei
+	cmp #32		; kein Punkt, Leertaste?
+	bne contn		; nein, dann keine Anzeige
+	ldx #41
+	sec
+	lda sc_vekt20
+	sbc #3
+	sta sc_vekt20
+	bcs +
+	dec sc_vekt20+1
++	ldy #16		; sonst: ganze Zeile leer?
+-	dey
+	bmi finish	; ja, (vorzeitiges) Ende
+	lda (sc_vekt20),y
+	cmp #32
+	beq -
+	bne contn		; sonst: keine Anzeige
+
+showtype	lda divdrei,x	; Index auf das zugehörige Icon
+	clc
+	adc #icons
+	sta sc_movetab
+	lda #0
+	sta sc_movetab+1
+	lda #19
+	sta sc_sp
+	jsr gd_initmove
+	jsr gd_xtxout3
+	bcc contn
 
 ; ------------------------------------------------ 
 
 prepdir	ldx #3		; Dirfenster Source löschen
-	cmp #23
+	cmp #22
 	bcc pd0
 pd1	lda ddirwin,x
 	sta sc_zl,x
 	dex 
 	bpl pd1
-	bmi pd2
+	lda #16
+	bne pd2
 pd0	lda sdirwin,x
 	sta sc_zl,x
 	dex 
 	bpl pd0
-pd2	inx 
+	lda #18
+pd2	sta winwdt
+	inx 
 	stx sc_loop
-	ldy #16
+	ldy winwdt
 	jsr gd_blank
 	jsr gd_trim
 	jsr gd_initmove
@@ -324,12 +366,12 @@ err	pla 		; leave last routine
 
 ; ------------------------------------------------ LOAD Directory Header
 
-getdirin	lda #2		; 2 Zeichen ("$:")
+getdirin	lda #3		; 3 Zeichen ("$: ", gets empty dir)
 
 ; ------------------------------------------------ LOAD Directory Entry of a File
 
 getfilin	pha 		; .a: Anzahl Zeichen
-	jsr gd_sproff	; ### 1.12
+	jsr gd_sproff
 	pla 
 	ldx #<dollar	; LOAD "$:" (note: *with* colon!)
 	ldy #>dollar
@@ -342,9 +384,9 @@ getfilin	pha 		; .a: Anzahl Zeichen
 	tax 
 	ldy #>dirbuffer	; in den Directory-Puffer
 	sei 
-	jsr load		; laden bis EOF (Achtung: VICE-Bug!)
+	jsr load
 	cli 
-	jmp gd_spron	; ### 1.12
+	jmp gd_spron
 
 ; ------------------------------------------------ Get Diskname and Blocks Free
 
@@ -366,7 +408,7 @@ di0	lda (sc_texttab),y	; Namen holen
 	dey 
 	bpl di0
 	jsr gd_cnvbc	; nach Petscii wandeln
-	ldy #4
+	ldy #2		; im Header ausgeben
 	jsr settab
 	jsr gettab
 	jsr gd_xtxout3
@@ -380,7 +422,7 @@ dirinfo	jsr getdirin	; gewählten Eintrag im Directory laden
 	tya 		; Offset auf Ende von Blocks-Free-String
 	pha 
 
-	ldx #4		; Blocks Free eintragen:	### 1.09
+	ldx #4		; Blocks Free eintragen:
 	ldy #7		; Source
 	lda which		; oder
 	beq di60
@@ -403,18 +445,15 @@ di3	lda sy_numbers,y
 	dex 
 	dey 
 	bpl di3
-	lda which
-	bne di5
 	jmp shsdrv	; show source
-di5	jmp shddrv	; oder show destination
 
 ; ------------------------------------------------ Colorize Selector Windows
 
-a	ldy #6
+a	ldy #4
 	jsr settab
 b	jsr gettab
 	inc sc_ho
-	ldx #2
+	ldx #2		; Index auf Hilite
 	jmp gd_fcol
 
 ; ------------------------------------------------ Highlight active Drive
@@ -429,7 +468,7 @@ offset	lda ls_drive	; Drivenummer minus 8 als Index
 	bcs os2
 	dec sc_vekt20+1
 os2	ldy #0
-	ldx #2
+	ldx #2		; Hilite-Farbe anwählen
 	lda sc_shadow+1,x
 os3	sta (sc_vekt20),y
 	iny 
@@ -451,7 +490,7 @@ cntbl	sta $62
 	jsr $bc49
 	jsr $bddf
 	dec pport		; BASIC off
-	ldy #6		; search delimiter	### 1.09
+	ldy #6
 di2	dey 
 	lda sy_numbers,y
 	bne di2
@@ -462,7 +501,7 @@ di2	dey
 cnva6	jsr sterr
 cnva7	ldy #0
 cnva4	sty ls_flen
-	clc 
+stay	clc 
 	rts 
 
 ; ------------------------------------------------ Event: Select a File
@@ -474,7 +513,7 @@ sel0	lda (sc_vekt20),y	; was dort steht umkopieren
 	sta sc_movetab,y	; in den Textausgabepuffer
 	sta ls_nambuf,y	; und als Filenamen
 	iny 
-	cpy sc_br
+	cpy #16
 	bne sel0
 sel1	dey 		; Leerzeichen hinten ausblenden
 	lda sc_movetab,y
@@ -553,8 +592,8 @@ sel6	iny
 	lda #32		; Blocks-Anzeige löschen
 sel7	sta blocks,x
 	dex 
-	bpl sel7
-	dey 
+	bpl sel7 		; .y zeigt auf den Delimiter ($00)
+	dey
 	ldx #4		; und Dateilänge eintragen
 sel8	lda sy_numbers,y
 	sta blocks,x
@@ -568,17 +607,196 @@ sel71	dex
 	sta wname,x
 	dey 
 	bpl sel71
-sel81	ldy #10		; Dateilänge anzeigen
-	jsr gettab
+sel81	ldy #6		; Dateilänge anzeigen
+sel82	jsr gettab
 	ldy #2
+	jsr gd_xtxout1
+
+; ------------------------------------------------ FileInfo: Read First Block
+
+	jsr gd_sproff
+	lda #<(dollar+2)
+	sta ls_vekta8
+	lda #>(dollar+2)
+	sta ls_vekta8+1
+	ldx ls_flen
+	bne +
+	jmp nothing
++	stx ls_temp
+	lda sdrive
+	sta ls_drive
+	jsr sopen
+	bcc +
+	jmp err6
++	ldx #13
+	jsr chkin
+	ldx #0
+-	jsr basin
+	sta buffer,x
+	inx
+	bit status
+	bvs +
+	txa
+	bne -
++	jsr clrch
+	jsr err6
+
+; ------------------------------------------------ FileInfo: Show 
+
+	jsr settab
+
+	ldx #0
+	stx xcnt		; Type-Index auf 0
+	stx lcnt		; Zeilenzähler auf 0
+	stx bufoff
+	lda buffer+1
+	cmp #$ca
+	bne +
+	lda buffer
+	cmp #$64
+	bne ++
+	lda #$4c
+	sta bufoff
+++	ldx #3
+	stx xcnt
+	bne ++
++	cmp #$c0		; Startadresse $c000?
+	beq +
+-	jmp notsys
++	lda buffer+2
+	cmp #$4c		; beginnt mit JMP?
+	bne -
+
+	lda buffer+5	; Type
+-	asl
+	bcc +
+	stx xcnt
++	inx
+	cpx #5
+	bcc -
+
+++	ldy #15
+	lda #12
+	jsr txf1
+	ldy #12		; Name out
+	jsr fio1
+
+	ldx xcnt
+	lda type_o,x
+	tax
+	jsr fi_fill
+	ldy #15
+	lda #<godtx
+	ldx #>godtx
+	jsr txf2
+	ldy #10		; Type out
+	jsr fi_out
+
+	ldy #15
+	lda #16
+	jsr txf1
+	ldy #11
+	lda #<verstx
+	ldx #>verstx
+	jsr txf2
+	ldy #14
+	jsr fi_out
+	
+	ldy #15
+	lda #24
+	jsr txf1
+	lda #<datetx
+	ldx #>datetx
+	ldy #7
+	jsr txf2
+	ldy #16		; Date out
+	jsr fi_out
+	
+	ldy #13
+	lda #<lentx
+	ldx #>lentx
+	jsr txf2
+	ldx buffer+8
+	lda buffer+9
+	and #$3f
+	jsr cntbl
+	ldx #15
+	dey
+-	lda sy_numbers,y
+	sta fouttx,x
+	dex
+	dey
+	bpl -
+	ldy #20		; Length out
+	jsr fi_out
+	
+	ldy #15
+	lda #40
+	jsr txf1
+	ldy #18		; Author out
+	jsr fi_out
+
+	clc
+	rts
+
+fi_out	inc lcnt
+fio1	ldx lcnt
+	lda txoffs,x
+	sta offout
+	jsr gettab	; .y: Offset auf Record-Adresse
+	jsr cnvbc
+	ldy offout	; .y: Offset auf Textadresse
 	jmp gd_xtxout1
+
+	
+notsys	lda #22
+	jsr prepdir
+	clc
+	rts
 
 ; ------------------------------------------------ Fehler
 
-nothing	ldy #12		; Nothing selected
-	!by $2c
-nospace	ldy #14		; Not enough space...
+nothing	ldy #8		; Nothing selected
 	jmp err7
+
+; ------------------------------------------------ 
+
+fi_fill	ldy #2
+-	lda type_s,x
+	sta godtx,y
+	lda type_t,x
+	sta godtx+12,y
+	dex
+	dey
+	bpl -
+	rts
+
+tx_fill	ldy #7
+txf1	clc
+	adc bufoff
+	ldx #>buffer
+txf2	sta amrk
+	stx amrk+1
+-	lda (amrk),y
+	sta fouttx,y
+	dey
+	bpl -
+	rts
+
+cnvbc	ldx #15
+-	lda fouttx,x
+	beq +
+	eor #$e0
+	clc
+	adc #32
+	bpl +
+	adc #64
+	bpl +
+	eor #$a0
++	sta fouttx,x
+	dex
+	bpl -
+	rts
 
 ; ------------------------------------------------ Event: Delete a File
 
@@ -603,7 +821,7 @@ err9	jsr gd_xmess
 	lda ls_err2	; Rückmeldung checken
 	and #15
 err5	sec 
-err3	rts 
+	rts 
 
 ; ------------------------------------------------ Open Source
 
@@ -615,178 +833,45 @@ sopen	lda #13		; 13,drive,13
 	lda ls_temp
 	ldx ls_vekta8
 	ldy ls_vekta8+1
-	bne op0
-
-; ------------------------------------------------ Open Destination
-
-dopen	lda #12		; 12,drive,12
-	tay 
-	ldx ddrive
-	beq err5
-	jsr filpar
-	lda wflen
-	ldx #<wname
-	ldy #>wname
-op0	jsr filnam
+	jsr filnam
 	jmp copen
 
-; ------------------------------------------------ 
-
-err400	jmp err40		; Err on Src
-err410	jmp err41		; Err on Dest
-
-; ------------------------------------------------ Event: Move a File
-
-sevmove	lda #$80		; set flag for Move, then Copy:
-	sta movefl
-
-; ------------------------------------------------ Event: Copy a File
-
-sevcopy	ldx ls_flen
-	beq nothing
-	sec 
-	lda disklen
-	sbc filelen
-	lda disklen+1
-	sbc filelen+1
-	bcc nospace
-	jsr gd_sproff
-	lda #<(dollar+2)
-	sta ls_vekta8
-	lda #>(dollar+2)
-	sta ls_vekta8+1
-	stx ls_temp
-	lda sdrive
-	sta ls_drive
-	jsr sopen
-	bcs err400
-
-	lda ddrive
-	sta ls_drive
-	jsr check41	; 1541: force job to ok! (m-w 0 0 1 1)
-	lda shift		; Shift/CTRL/C= gedrückt?
-	beq sco1
-	lda ls_flen
-	pha 
-	jsr sevdel	; dann on Destination löschen
-	pla 
-	sta ls_flen
-	jsr gd_sproff
-sco1	jsr inull
-	bne err410
-	jsr dopen
-	jsr err9
-	beq sco02
-	jmp err42
-sco02	lda movefl
-	beq sco03
-	ldx #11
-	!by $2c
-sco03	ldx #0
-	asl 
-	sta blcnt
-	sta blcnt+1
-	jsr tcopy
-	lda filelen+1
-	ldx filelen
-	jsr steps
-	jsr gd_clrms
-
-scloop	jsr action	; Gauge Activity
-	ldx #13
-	jsr chkin
-	ldx #0
-scl0	jsr basin		; einen Block holen (Source)
-	sta buffer,x
-	inx 
-	bit status
-	bvs scl2
-	txa 
-	bne scl0
-scl2	stx xcnt
-	jsr clrch
-	lda status
-	sta stmerk
-	ldx #12
-	jsr ckout
-	ldx #0
--	lda buffer,x	; einen Block schreiben (Destination)
-	jsr ciout
-	inx 
-	cpx xcnt
-	bne -
-	jsr clrch
-	lda status	; Status ok?
-	ora stmerk
-	beq scloop	; dann nächster Block
-
-	lda sdrive
-	sta ls_drive
-	jsr err6
-	jsr gd_sproff
-	lda movefl	; Move?
-	beq scl3
-	jsr sevdel	; dann Source löschen
-scl3	ldx #1
-	ldy ddrive
-	jsr dirdest
-	inx 
-	stx movefl
-	stx ls_flen
-	jsr check41	; 1541: again Job-Reset 
-
-err6	lda #12
-	jsr close
-	lda #13
-	jsr close
-	lda #15
-	jsr close
-	jsr gd_xmess	; Floppy-Meldung
-	jmp gd_spron
-
-; ------------------------------------------------ Errors
-
-err40	lda #16		; Error on Source
-	!by $2c
-err41	lda #18		; Error on Destination
-	!by $2c
-err42	lda #20		; Error opening Destination
-	pha 
-	jsr err6
-	jsr err8
-	pla 
-	tay 
-err7	asl movefl	; Moveflag aus
-	jsr settab
-	jsr gettab
-	ldy #2
-	jmp gd_xtxout1
-
 ; ------------------------------------------------ ERROR
+
+err6	lda #13
+	jsr close
+	jsr gd_xmess
+	jmp gd_spron
 
 err8	ldx #4
 er80	lda ermess,x	; "ERROR" in Titel ausgeben
 	sta blocks,x
 	dex 
 	bpl er80
-	ldy #10
-	bne err7
+	ldy #6		; blks anwählen
+
+; ------------------------------------------------ Errors
+
+err7	jsr settab
+	jsr gettab
+	ldy #2
+	jmp gd_xtxout1
 
 ; ------------------------------------------------ Event: Scroll Source
 
-sevsupdn	lda sc_merk
+sevsupdn	lda sc_merk	; Klick-Zeile
 	sta merkzl
 	lda sdrive
 	sta ls_drive
-	jsr shsdrv	; ### 1.11
-	lda #1
+	jsr shsdrv
+	lda #2
 
 destud	sta dspalte
 	lda block+$1d
 	sta ls_track
 
 	lda merkzl	; wo geklickt?
-	cmp #6		; up oder down?
+	cmp #17		; up oder down?
 	bcs up
 dn	ldy block+$1e
 	bne sdw4
@@ -814,50 +899,15 @@ sdw0	dex
 sdw2	dey 
 	bne sdw0
 sdw1	ldy block,x
-sdw11	lda fftrack,x	; ### 1.11
+sdw11	lda fftrack,x
 	sta ls_track
 	stx block
 	ldx #4
 	stx sc_zl
 	ldx #1
-	jsr dir4		; System DIrectory
+	jsr dir4		; System Directory
 	jsr svftrack
 	jmp sdir3		; restore system dir (dspalte)
-
-; ------------------------------------------------ Directory of Destination
-
-dirdest	jsr swap		; swap dir records
-	stx which
-	lda ddrive
-	sta ls_drive
-	jsr dirinfo
-	lda blksfree
-	sta disklen
-	lda blksfree+1
-	sta disklen+1
-	ldx block+$1e
-	beq sud1
-	dex 
-	beq sud1
-	dex 
-	bne sud2
-sud1	inx 
-sud2	stx block+$1e
-	lda #5
-	bne sud3
-
-; ------------------------------------------------ Event: Scroll Destination
-
-sevdupdn	jsr swap
-sud0	lda sc_merk	; wo geklickt?
-
-sud3	sta merkzl
-	lda ddrive
-	sta ls_drive
-	jsr shddrv
-	lda #23		; rechtes Dir-Fenster
-	jsr destud
-	jmp swap		; re-swap
 
 ; ------------------------------------------------ Event: Input Filename
 
@@ -936,7 +986,7 @@ rn0	lda scratch+1,y	; Namen umtragen für Rename
 	bne rn0
 	inc alen
 	jsr settab
-	ldy #4		; title bar ansteuern
+	ldy #2		; title bar ansteuern
 	jsr gettab
 	ldy #12
 	jsr setptr	; Mauszeiger an die richtige Stelle setzen
@@ -990,7 +1040,7 @@ sevdos	jsr gd_clrms
 	jmp cnva6		; Floppy-Meldung
 fierr0	jmp fierr		; Error: Nothing selected
 
-; ------------------------------------------------ Mauzeiger setzen
+; ------------------------------------------------ Mauszeiger setzen
 
 setptr	tya 
 	clc 
@@ -1004,66 +1054,113 @@ setptr	tya
 
 ; ------------------------------------------------ Screenlist
 
-copylst	!by $93
-sels	!by 0,0,7,4,$f0,<sevsdrive,>sevsdrive
+explrlst	!by $00
+
+	!by 17,33,3,3,$40
+	!wo stay
+	!by 17,34,3,3,$40
+	!wo stay
+	!by 17,35,3,3,$40
+	!wo sevrename
+
+	!by 0,1,38,25,$21
+	!wo 0
+
+sels	!by 0,1,7,4,$f4
+	!wo sevsdrive
 	!scr " 8  9@"
-seld	!by 0,33,7,4,$f0,<sevddrive,>sevddrive
-	!scr " 8  9@"
-header	!by 0,7,26,3,$60,<sevfinput,>sevfinput
-sdirwin	!by 4,0,18,18,$60,<sevselect,>sevselect
-ddirwin	!by 4,22,18,18,$20,0,0
-	!by 4,17,6,18,1,0,0
-	!by 9,17,6,3,$da,<(sevcopy),>(sevcopy)
-	!scr "Copy@"
-	!by 11,17,6,3,$cb,<(sevmove),>(sevmove)
-	!scr "Move@"
-	!by 13,17,6,3,$cb,<(sevrename),>(sevrename)
-	!scr "Name@"
-	!by 15,17,6,3,$db,<(sevdel),>(sevdel)
-	!scr "Del @"
-	!by 17,17,6,3,$cb,<(sevdos),>(sevdos)
-	!scr "Dos @"
-	!by 4,17,3,5,$d4,<(sevsupdn),>(sevsupdn)
-	!by 30,0					; Hochpfeil
-	!by 4,20,3,5,$d6,<(sevdupdn),>(sevdupdn)
-	!by 30,0					; Hochpfeil
-	!by 19,17,6,3,$cb,<(sevquit),>(sevquit)
-	!scr "Quit@"
-	!by 22,0,3,3,$c0,<(sevsstat),>(sevsstat)
+
+header	!by 0,8,26,3,$65
+	!wo sevfinput
+
+	!by 0,34,5,3,$b6
+	!wo 0
+	!scr "U&I@"
+
+sdirwin	!by 4,1,20,18,$68
+	!wo sevselect
+
+ddirwin	!by 4,21,18,11,$2f
+	!wo 0
+
+	!by 15,21,3,4,$d0
+	!wo sevsupdn
+	!by 30,0				; Hochpfeil
+
+	!by 19,21,3,3,$c0
+	!wo sevsstat
 	!scr "?@"
-	!by 22,3,34,3,$80,0,0
-	!scr "Copy on one drive not supported.@"
-	!by 22,37,3,3,$c0,<(sevdstat),>(sevdstat)
-	!scr "?@"
-	!by $c0,6,17,1
-	!by 31,0					; Abpfeil
-	!by $c0,6,20,1
-	!by 31,0					; Abpfeil
-	!by $c0,1,0,5
+
+	!by 15,24,6,3,$c0
+	!wo stay
+	!scr "Inst@"
+
+	!by 15,30,8,3,$c0
+	!wo stay
+	!scr "Launch@"
+
+	!by 18,24,8,3,$40			; ChDir
+	!wo stay
+	!by 19,24,8,3,$40			; ChPart
+	!wo stay
+	!by 18,24,8,4,$00
+	!wo 0
+
+	!by 19,32,6,3,$c0
+	!wo sevquit
+	!scr "Exit@"
+
+	!by 22,3,34,3,$ac
+	!wo 0
+	!scr "- goDos Explorer -@"
+
+	!by $c0,18,24,5
+	!scr "ChDir@"
+	!by $c0,19,24,6
+	!scr "ChPart@"
+
+	!by $c0,1,1,5
 	!scr "10 11@"
-	!by $c0,1,33,5
-	!scr "10 11@"
+
+	!by $c0,16,21,1
+	!by 31,0				; Abpfeil
+
 	!by $c0
-sdrv	!by 2,6,11
-	!scr "U  :     @"				; Unit
+sdrv	!by 2,7,11
+	!scr "U  :     @"			; Unit
+
 	!by $c0
-ddrv	!by 2,23,11
-	!scr "U  :     @"
+	!by 2,21,9
+	!scr "FileInfo:@"
+
+	!by $c0
+	!by 17,33,3
+	!scr "NDR@"
+
 	!by $80
 
 ; ------------------------------------------------ Messages
 
 enoth	!by 22,3,34
 	!scr "       Nothing selected.        @"
-enosp	!by 22,3,34
-	!scr "Not enough space on destination.@"
-eons	!by 22,3,34
-	!scr "        Error on Source.        @"
-eond	!by 22,3,34
-	!scr "     Error on Destination.      @"
-eopd	!by 22,3,34
-	!scr "   Error opening Destination.   @"
 ermess	!pet "error"
+
+type_s	!pet "DEVUNISYSAPP"
+type_t	!pet "DEVMODSVRLDR"
+type_o	!by 11,8,5,2
+txoffs	!by 2,5,8,11,14,17
+aut2out	!by 11,21,18
+lenout	!by 9,21,18
+dateout	!by 8,21,18
+versout	!by 7,21,18
+godout	!by 5,21,18
+nam2out	!by 4,21,18
+fouttx	!pet "................"
+	!by 0
+godtx	!pet "xxx (GoDot: xxx)"
+datetx	!pet "Date:   "
+verstx	!pet "Version:    "
+lentx	!pet "Length:       "
 
 ; ------------------------------------------------ Data
 
@@ -1073,6 +1170,7 @@ alen	!by 0
 aswitch	!by 0
 sdrive	!by 0
 ddrive	!by 0
+winwdt	!by 18
 
 ; ------------------------------------------------ Text Buffers
 
@@ -1091,7 +1189,7 @@ init	!pet "i0"
 wflen	!by 0
 which	!by 0
 off	!by 80,77,40,37
-blks	!by 0,26,7
+blks	!by 0,27,7	; 7 wird auf 5 getrimmt!
 blocks	!by 32,32,32,32,32,0
 pic	!pet "pic"
 disklen	!wo $ffff
@@ -1102,6 +1200,13 @@ mwlen	!by 7
 merkzl	!by 0
 afiles	!by 0
 movefl	!by 0
+shdmk	!by 0
+types	!scr "modsysappunildrsvrdev"
+	!scr "4btfntspsconpatgod"
+divdrei	!by 0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6
+	!by 7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8
+match	!by 0
+three	!by 3
 
 ; ------------------------------------------------ 
 
@@ -1122,8 +1227,6 @@ chkdrvpar	ldx #192
 	ldx #31
 cdp1	lda block,x
 	sta block+$40,x
-;	lda ftrack,x	; ### 1.11 ???
-;	sta ftrack+$40,x
 	dex 
 	bpl cdp1
 	lda ls_cblocks
@@ -1137,54 +1240,13 @@ cdp1	lda block,x
 	sta block+$5d
 cdp0	rts 
 
-; ------------------------------------------------ Swap Chain for Destination Drive
-
-swap	ldx #31
-sw0	lda block,x
-	tay 
-	lda block+$40,x
-	sta block,x
-	tya 
-	sta block+$40,x
-	lda fftrack,x	; ### 1.11
-	tay 
-	lda fftrack+$40,x
-	sta fftrack,x
-	tya 
-	sta fftrack+$40,x
-	dex 
-	bpl sw0
-	clc 
-	rts 
-
-; ------------------------------------------------ Compute Gauge Counter for Copy
-
-steps	sta $62		; ### 1.06
-	stx $63
-	lsr $62
-	ror $63
-	lsr $62
-	ror $63
-	lsr $62
-	ror $63
-	lsr $62
-	ror $63
-	lda $63
-	jsr gd_xcnvdez
-	inx 
-	txa 
-	and #15
-	sta cntwert
-	sta counter
-chk0	rts 
-
 ; ------------------------------------------------ Patch 1541 Job Bug
 
 check41	ldx ls_drive
 	lda devs,x
 	and #$f0
 	cmp #$40
-	bne chk0
+	bne cdp0
 	ldx #<mwrite	; m-w 0 0 1 1 ($01 nach $00)
 	ldy #>mwrite	; means: job for buffer 0 returns ok
 	lda mwlen

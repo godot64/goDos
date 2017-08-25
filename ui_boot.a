@@ -18,7 +18,8 @@
 ;   1.36, 31.05.17 ; changed length of swp.file to 4096 bytes
 ;   1.37, 15.07.17 ; accommodation to dev.REU v1.07
 ;
-;   0.99, 07.08.17,  first release for godos 
+;   0.99, 07.08.17, first release for godos
+;         25.08.17, changed: max # of entries in dir window is variable now
 ;
 ; ------------------------------------------------------------ 
 
@@ -165,6 +166,7 @@ m01	ldx mousey
 	ldx #$10		; preset Balancing values
 	stx gr_ctr
 	stx gr_brt
+	stx ls_dlines	; ... and max # of dir window entries
 	dex		; preset Palettes
 m1	lda paldef,x
 	sta gr_palette,x
@@ -194,7 +196,7 @@ m1	lda paldef,x
 	sta sysdrive+2
 	jsr mktabs	; set tables definitely
 	jsr setpat	; enter Dither pattern 
-	jmp sy_into	; Start GoDot
+	jmp sy_into	; Start goDos
 
 ; --------------------------------------- 
 
@@ -1109,22 +1111,22 @@ ramvec	clc				; Vektor auf RAM Device ($03fd)
 	
 ; ---------------------------------------
 
-syspat	!byte $00,$00,$00,$00,$00,$00,$00,$00	; System-Pattern (gr_pattern, $0f00)
-	!byte $00,$44,$00,$11,$00,$44,$00,$11
-	!byte $00,$55,$00,$11,$00,$55,$00,$11
-	!byte $00,$55,$00,$55,$00,$55,$00,$55
-	!byte $00,$55,$22,$55,$00,$55,$22,$55
-	!byte $88,$55,$22,$55,$88,$55,$22,$55
-	!byte $aa,$55,$22,$55,$aa,$55,$22,$55
-	!byte $aa,$55,$aa,$55,$aa,$55,$aa,$55
-	!byte $ee,$55,$aa,$55,$ee,$55,$aa,$55
-	!byte $ee,$55,$bb,$55,$ee,$55,$bb,$55
-	!byte $ff,$55,$bb,$55,$ff,$55,$bb,$55
-	!byte $ff,$55,$ff,$55,$ff,$55,$ff,$55
-	!byte $ff,$77,$ff,$55,$ff,$77,$ff,$55
-	!byte $ff,$77,$ff,$77,$ff,$77,$ff,$77
-	!byte $ff,$77,$ff,$ff,$ff,$77,$ff,$ff
-	!byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
+syspat	!byte $ec,$92,$92,$92,$92,$92,$82,$00	; System-Pattern (gr_pattern, $0f00)
+	!byte $7c,$80,$80,$7e,$01,$01,$fe,$00
+	!byte $7c,$82,$82,$fe,$82,$82,$82,$00
+	!byte $82,$82,$82,$82,$82,$82,$7e,$00
+	!byte $80,$80,$80,$80,$80,$80,$fe,$00
+	!byte $7f,$80,$80,$7e,$01,$01,$3e,$00
+	!byte $fc,$82,$82,$82,$82,$82,$fc,$00
+	!byte $80,$80,$88,$88,$7e,$08,$08,$00
+	!byte $7c,$82,$80,$80,$be,$82,$7c,$00
+	!byte $80,$00,$00,$00,$00,$00,$00,$00
+	!byte $01,$00,$00,$00,$00,$00,$00,$00
+	!byte $00,$00,$00,$00,$00,$00,$00,$01
+	!byte $00,$00,$00,$00,$00,$00,$00,$80
+	!byte $00,$00,$00,$00,$00,$00,$00,$ff
+	!byte $ff,$00,$00,$00,$00,$00,$00,$00
+	!byte $02,$02,$02,$02,$02,$02,$ff,$02
 
 ; ---------------------------------------
 

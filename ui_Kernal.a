@@ -4,10 +4,11 @@
 
 ; -------------------------------------------------- 
 ;
-; This is the U&I kernel 1.00 
+; This is the U&I kernel 1.01 
 ; It is based on GoDot kernel v1.30.
 ;
 ; 1.00, 06.08.17, first release
+; 1.01, 25.08.17, changed: max # of entries in dir window: variable
 ;
 ; -------------------------------------------------- 
 
@@ -603,7 +604,7 @@ most	lda #0
 ; -------------------------------------------------- Version Number
 
 gd_version
-	!by $00,$99	; kernal version number, SED-mode
+	!by $01,$01	; kernal version number, SED-mode
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Entry to U&I, Main Loop
@@ -1875,7 +1876,7 @@ mdr3	lda dirbuf,x	; name to text buffer
 
 mdr7	inc ls_found
 	lda ls_lines	; window filled?
-	cmp #16
+	cmp ls_dlines
 	beq mdr6		; yes, finished
 
 mdr2	lda #$20		; next entry
@@ -1899,7 +1900,7 @@ mdr4	lda dirbuf+1	; next block
 	sta ls_track
 	sta ftrack,y
 	lda ls_lines	; window full?
-	cmp #16
+	cmp ls_dlines
 mdr5	rts
 ;
 mdr9	jmp gd_makedir

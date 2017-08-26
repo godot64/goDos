@@ -9,6 +9,8 @@
 ;
 ; 1.00, 06.08.17, first release
 ; 1.01, 25.08.17, changed: max # of entries in dir window: variable
+; 1.02, 26.08.17, added: 2 new gadget types, flat style
+;                 changed: UI (no Start Menu anymore)
 ;
 ; -------------------------------------------------- 
 
@@ -19,7 +21,7 @@ gd_boxtab	!by 125,095,032,120,032,098,032,123,092	;  0
 	!by 097,117,116,111,032,119,099,115,107	;  2
 	!by 110,095,100,111,032,119,099,115,107	;  3
 	!by 125,095,100,120,032,119,113,115,107	;  4
-	!by 125,095,032,120,032,098,113,115,114	;  5
+box05	!by 125,095,032,120,032,098,113,115,114	;  5
 	!by 110,095,032,111,032,098,099,115,114	;  6
 	!by 104,117,116,120,032,119,032,123,108	;  7
 	!by 125,095,100,120,032,119,032,123,108	;  8
@@ -196,7 +198,7 @@ box	jsr initmove	; compute screenaddress
 	dex
 	jsr fi2
 	jsr makeline	; create bottom edge
-	jsr backu		; display
+patch1	jsr backu		; display
 
 ; -------------------------------------------------- Add colors to box
 
@@ -604,7 +606,7 @@ most	lda #0
 ; -------------------------------------------------- Version Number
 
 gd_version
-	!by $01,$01	; kernal version number, SED-mode
+	!by $01,$02	; kernal version number, SED-mode
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Entry to U&I, Main Loop
@@ -1173,9 +1175,9 @@ getback	php		; save Carry flag
 ; ------------------------------------------ Display U&I Menu
 
 menu	jsr fill		; fill screen
-	ldx #<menulst	; display requester
-	ldy #>menulst
-	jsr screen
+	ldx #<mainlst	; display requester
+	ldy #>mainlst
+	jsr nscreen
 	lda #18		; set normcolor to row
 	sta sc_zl
 	lda #2		; column
@@ -1271,7 +1273,7 @@ ui_exit	jsr mainscr
 mainscr	jsr fill
 	ldx #<mainlst
 	ldy #>mainlst
-	jmp screen
+	jmp nscreen
 
 ; -------------------------------------------------- Subevent: Load File
 
@@ -2058,7 +2060,7 @@ filtype	!scr "  *  @"
 
 ; -------------------------------------------------- 
 
-ldr	!pet "ldr.*"
+ldr	!pet "app.*"
 	!by 0
 sys	!pet "sys.*"
 	!by 0
@@ -2148,6 +2150,30 @@ ui_first	lda sc_normtext
 ui_load	jsr mainscr
 	jmp ev_load
 
+ui_mod	jsr mainscr
+	jmp ev_mod
+
+ui_about	jsr mainscr
+	lda gd_version
+	ora #$30
+	sta ui_ver
+	lda gd_version+1
+	pha
+	lsr
+	lsr
+	lsr
+	lsr
+	ora #$30
+	sta ui_ver+2
+	pla
+	and #15
+	ora #$30
+	sta ui_ver+3
+	ldx #<aboutlst
+	ldy #>aboutlst
+	jsr ascreen
+	jmp gd_eloop
+	
 ; ------------------------------------------------ Event: Explorer
 
 ui_sys	jsr mainscr
@@ -2160,6 +2186,7 @@ ui_show	jsr mainscr
 	ldx modul+8	; App 4BitViewer is App #1
 	dex
 	bne +
+	jsr ui_load
 	lda #2
 	sta modul+9
 	jsr modul
@@ -2171,75 +2198,90 @@ ui_exec	jsr mainscr
 	jsr ev_exec
 	jmp mainscr
 
-; -------------------------------------------------- Event: Submenu
+; --------------------------- Box definieren
 
-ui_submn	ldx #<smenulst
-	ldy #>smenulst
+box17	!by $e7,$e2,$e6,$e1,$20,$e3,$e5,$e0,$e4
+box18	!by $eb,$ed,$ec,$40,$20,$6d,$ea,$ee,$e9
+
+makebox	stx ls_adrmisc
+	sty ls_adrmisc+1
+	tax
+	ldy #8
+-	lda box05,y
+	pha
+	lda box17,x
+	sta box05,y
+	pla
+	sta box17,x
+	dex
+	dey
+	bpl -
+	ldx ls_adrmisc
+	ldy ls_adrmisc+1
+	rts
+
+; --------------------------- Screen
+
+ascreen	lda #17 	
+	!by $2c
+nscreen	lda #8
+	pha
+	jsr makebox
+	jsr patch
 	jsr screen
-	jsr gd_eloop
-	jmp ui_menu
-	
+	pla
+	jsr makebox
+
+unpatch	lda #$20		; JSR
+	!by $2c
+patch	lda #$4c		; JMP
+	sta patch1
+	rts
+
 ; -------------------------------------------------- 
 
-mainlst	!by 0
-	!by 22,0,7,3,$c0
-	!wo ui_menu
-ml01	!scr "Start@"
-	!by 0,33,7,3,$a0
-	!wo 0
-	!scr " U&I @"
-	!by $80
+mainlst	!by $00
 
-menulst	!by $00		; $ff: mit Shortcuts!
-	!by 16,1,12,3,$00	; Separator
-	!wo 0
-	!by 17,1,12,3,$40	; Explorer
-	!wo ui_sys
-	!by 18,1,12,3,$40	; Images
-	!wo ui_submn
-	!by 19,1,12,3,$40	; Exec
-	!wo ui_exec
-	!by 20,1,12,3,$40	; Exit
-	!wo ui_exit
+	!by 19,0,3,3,$c5	; About
+	!wo ui_about
+	!scr "?@"
 
-	!by 15,1,12,9,$90	; Titlebar
-	!wo 0
-	!scr "goDos 0.99@"
-
-	!by 22,0,7,3,$c0	; Start-Button
-	!wo se_cancel
-	!scr "Start@"
-	!by 0,33,7,3,$a0	; Branding
-	!wo 0
-	!scr " U&I @"
-
-	!by $c0,16,1,10
-	!scr "----------@"
-	!by $c0,17,1,8
-ml02	!scr "Explorer@"	; C=e
-	!by $c0,18,1,10
-ml04	!scr "View Image@"	; C=s
-	!by $c0,19,1,8
-ml06	!scr "Exec MOD@"	; C=m
-	!by $c0,20,1,4
-ml08	!scr "Exit@"	; C=x
-	!by $80
-
-smenulst	!by 0
-	!by 16,10,11,3,$40
-	!wo ui_load
-	!by 17,10,11,3,$40
+	!by 19,3,9,3,$c5	; Exec APP
 	!wo ui_show
-	!by 18,10,11,3,$40
+	!scr "Run APP@"
+
+	!by 19,12,9,3,$c5	; Exec MOD
+	!wo ui_exec
+	!scr "Run MOD@"
+
+	!by 22,0,6,3,$c5	; Explorer
+	!wo ui_sys
+	!scr "Disk@"
+
+	!by 22,6,6,3,$c5	; Load APPs
+	!wo ev_ldr
+	!scr "APPs@"
+
+	!by 22,12,6,3,$c5	; Load MODs
+	!wo ev_mod
+	!scr "MODs@"
+
+	!by 22,34,6,3,$c5	; Exit
+	!wo ui_exit
+	!scr "Exit@"
+
+	!by $80
+
+aboutlst	!by $00
+
+	!by 5,8,24,6,$d5
 	!wo se_cancel
-	!by 16,10,11,5,$00
-	!wo 0
-	!by $c0,16,10,9 
-	!scr "Load&View@"
-	!by $c0,17,10,9
-	!scr "Just View@"
-	!by $c0,18,10,5
-	!scr "Leave@"
+	!scr "goDos v"
+ui_ver	!scr "0.00@"
+
+	!by $c0,7,8,21
+	!scr "C64 OS Extender by AD@"
+
 	!by $80
 
 ; -------------------------------------------------- 

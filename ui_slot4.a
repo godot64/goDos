@@ -1,98 +1,60 @@
 
-!src "..\godotlib.lib"
+!src "..\godoslib.lib"
 *= $c000
 
-;    ---------------------------------------------------   
-; ***                                                   ***
-; ***  formerly: GoDot UpMem                            ***
-; ***                                                   ***
-; ***                                                   ***
-; ***                                                   ***
-; ***  1.08, 22.08.92,                                  ***
-; ***                                                   ***
-; ***  1.10, 14.11.92                                   ***
-; ***  1.11, 22.11.92                                   ***
-; ***  1.12, 03.02.93                                   ***
-; ***  1.13, 02.04.93                                   ***
-; ***  1.14, 16.08.93,                                  ***
-; ***        01.11.00, complete comment revision        ***
-; ***                                                   ***
-;    ---------------------------------------------------   
+; -------------------------------------------------- 
 ;
 ; U&I Slot4
 ; Upmem fraction of goDos kernel
 ;
 ; 0.99, 14.08.17, removed Palette, Balancing, Guru, Dither Mode and Clip Status
 ;                 added Input
-;
+; 0.01, 27.08,17, added: FileInfo for Explorer
+; 0.02, 29.08.17, added: Screen Cache
 ;
 ; -------------------------------------------------- Declarations
 
 	pport		= $01		; usually $36
 
-	src		= $39
-	col00		= $3b
-	nr0		= $40
-	max		= $44
-	rstart		= max
-	rend		= max+1
-	cols		= $46
-	zp1		= $47
-	xbuf		= $48
-	rstep		= xbuf
-	hmzp		= $49
-	cmzp		= $4a
-	pbuf		= $4b
-
-	source		= $a6
-	dest		= $a8
+	amrk		= $30		; /$31
+	xcnt		= $32
+	lcnt		= $33
+	bufoff		= $34
+	offout		= $35
 	lflag		= $a8
 	brttmp		= $a9
 	crttmp		= $aa
-	vblock		= $aa
-	bitcnt		= $ac
-	source1		= $ae
-	dest1		= $b2
-	hold		= $b4
-	vblock1		= $b5
 
 	sprptr		= $07fa
 
 	spr2		= $3e80
 	spr5		= $3f40
-	hist1		= $3f40
-	hist		= $3f50
-	etab		= $3f70
-	htab		= $3f80
-	htab0		= $3f90
-	rtab		= $3fb0
 
 	dbuf		= $bf00
 
 	sprxy		= $d004
 	xmsb		= $d010
-	grafreg		= $d011
 	sprreg		= $d015
-	multreg		= $d016
 	yexp		= $d017
-	charreg		= $d018
 	sprpri		= $d01b
 	sprmulti		= $d01c
 	xexp		= $d01d
-	border		= $d020
-	backgr		= $d021
 	sprcol2		= $d025
 	sprcol3		= $d026
 	sprcol1		= $d029
 
-	oszi3		= $d40e
-	wave		= $d412
-	filter		= $d418
-	rausch		= $d41b
+; ------------------------------------------------ 
 
-	cstart		= $fe0b
-	vram1		= $de0b
-	vram2		= $ee0b
+	vram		= $0400
+	cram		= $d800
+	ui_vcache		= $b500
+	ui_ccache		= $b900
+
+; ------------------------------------------------ 
+
+	fileopen		= $1c9e
+	fileclose		= $1b12
+	buffer		= $cd00		; transport buffer (1 block)
 
 ; -------------------------------------------------- Header
 
@@ -102,8 +64,8 @@
 	!wo modend
 	!wo 0
 	!pet "goDos f000 slot4"
-created	!pet "0.99"
-	!pet "17.08.17"
+created	!pet "0.02"
+	!pet "29.08.17"
 	!pet "A.Dettke        "
 
 ; -------------------------------------------------- Module Management
@@ -114,54 +76,398 @@ start	ldx sc_screenvek	; save vector to main screen screenlist
 	stx list+1
 
 	ldx gr_nr		; get function number
-	beq jevbal	; 0: not used
+	beq leave		; 0: not used
 	dex
 	beq jinput	; 1: Input
 	dex
-	beq jevdispl	; 2: Display
+	beq jevcache	; 2: Cache Screen
 	dex
-	beq jevdith	; 3: not used
+	beq leave		; 3: not used
 	dex
-	beq jevarea	; 4: not used
+	beq leave		; 4: not used
 	dex
-	beq jevinfo	; 5: not used
+	beq jevinfo	; 5: File Info
 	dex
 	beq jevprviu	; 6: Switch Preview on
 	dex
-	beq jevdisp2	; 7: Redisplay
+	beq leave		; 7: not used
 
 leave	clc
 	rts
 
-jevdispl    jmp leave
-jinput      jmp initinp
-jevbal      jmp leave
-jevdith     jmp leave
-jevarea     jmp leave
-jevprviu    jmp evprviu
-jevdisp2    jmp leave
-jevinfo     jmp leave
+jinput	jmp initinp
+jevinfo	jsr evinfo
+listback	lda list
+	sta sc_screenvek
+	lda list+1
+	sta sc_screenvek+1
+	rts
+jevcache	jmp evcache
+jevprviu	jmp evprviu
 
-; ### removed:
-; -------------------------------------------------- 
-; -------------------------------------------------- Palette Management
-; -------------------------------------------------- 
+list	!wo 0
 
-; ### removed:
 ; -------------------------------------------------- 
-; -------------------------------------------------- Event: Toggle Clip/Full
+; -------------------------------------------------- Event: File Info
 ; -------------------------------------------------- 
 
+; ------------------------------------------------ FileInfo: Read First Block
 
-; ### removed:
+evinfo	jsr gd_sproff	; get filename
+	lda #<ls_nambuf
+	sta ls_vekta8
+	lda #>ls_nambuf
+	sta ls_vekta8+1
+	ldx ls_flen
+	bne +
+	jmp err7		; no file selected
+
++	stx ls_temp
+	jsr fileopen
+	bcc +
+	jmp err6
+
++	ldx #0		; get one block
+-	jsr basin
+	sta buffer,x
+	inx
+	bit status
+	bvs +
+	txa
+	bne -
++	jsr clrch
+	jsr err6
+
+; ------------------------------------------------ FileInfo: Show 
+
+info	stx ui_cacheflg	; .x=0, cache flag auf 0
+	jsr evcache	; und Screen cachen
+	ldx #<infolst	; open info requester
+	ldy #>infolst
+	jsr gd_screen
+	ldx list
+	ldy list+1
+	stx sc_screenvek
+	sty sc_screenvek+1
+	
+	jsr settab
+
+	ldx #0
+	stx xcnt		; Type-Index auf 0
+	stx lcnt		; Zeilenzähler auf 0
+	stx bufoff
+
+	ldx buffer
+	stx strtadr
+	lda buffer+1	; file=device?
+	sta strtadr+1
+	cmp #$ca
+	bne +
+	cpx #$64
+	bne ++
+	lda #$4c		; ja, anderer Offset
+	sta bufoff
+++	ldx #3
+	stx xcnt
+	bne ++
+
++	cmp #$c0		; Startadresse $c000?
+	beq +
+-	jmp other
++	lda buffer+2
+	cmp #$4c		; beginnt mit JMP?
+	bne -
+
+	lda buffer+5	; Type
+-	asl
+	bcc +
+	stx xcnt
++	inx
+	cpx #5
+	bcc -
+
+++	ldy #15
+	lda #12
+	jsr txf1
+	ldy #2		; Name out
+	jsr fio1
+
+	ldx xcnt
+	lda type_o,x
+	tax
+	jsr fi_fill
+	ldy #15
+	lda #<godtx
+	ldx #>godtx
+	jsr txf2
+	ldy #0		; Type out
+	jsr fi_out
+
+	ldy #15
+	lda #16
+	jsr txf1
+	ldy #11
+	lda #<verstx
+	ldx #>verstx
+	jsr txf2
+	ldy #4		; Version out
+	jsr fi_out
+	
+	ldy #15
+	lda #24
+	jsr txf1
+	lda #<datetx
+	ldx #>datetx
+	ldy #7
+	jsr txf2
+	ldy #6		; Date out
+	jsr fi_out
+	
+	ldy #13
+	lda #<lentx
+	ldx #>lentx
+	jsr txf2
+	ldx buffer+8
+	lda buffer+9
+	and #$3f
+	jsr cntbl
+	ldx #15
+	dey
+-	lda sy_numbers,y
+	sta fouttx,x
+	dex
+	dey
+	bpl -
+	ldy #10		; Length out
+	jsr fi_out
+	
+	ldy #15
+	lda #40
+	jsr txf1
+	ldy #8		; Author out
+
+; ------------------------------------------------ 
+
+fi_out	inc lcnt
+fio1	ldx lcnt
+fio2	lda txoffs,x
+	sta offout
+	jsr gettab	; .y: Offset auf Record-Adresse
+	jsr cnvbc
+	ldy offout	; .y: Offset auf Textadresse
+	jmp gd_xtxout1
+	
+; ------------------------------------------------ 
+
+fi_fill	ldy #2
+-	lda type_s,x
+	sta godtx,y
+	lda type_t,x
+	sta godtx+12,y
+	dex
+	dey
+	bpl -
+	rts
+
+tx_fill	ldy #7
+txf1	clc
+	adc bufoff
+	ldx #>buffer
+txf2	sta amrk
+	stx amrk+1
+-	lda (amrk),y
+	sta fouttx,y
+	dey
+	bpl -
+	rts
+
+; ------------------------------------------------ 
+
+cnvbc	ldx #15
+-	lda fouttx,x
+	beq +
+	eor #$e0
+	clc
+	adc #32
+	bpl +
+	adc #64
+	bpl +
+	eor #$a0
++	sta fouttx,x
+	dex
+	bpl -
+	rts
+
+; ------------------------------------------------ 
+
+cntbl	sta $62
+	stx $63
+	lda #$37		; BASIC on
+	sta pport
+	ldx #$90
+	sec 
+	jsr $bc49
+	jsr $bddf
+	dec pport		; BASIC off
+	ldy #6
+di2	dey 
+	lda sy_numbers,y
+	bne di2
+	rts 
+
+; ------------------------------------------------ 
+
+other	ldx #15
+	lda #32
+-	sta fouttx,x
+	dex
+	bpl -
+	lda #<ls_nambuf
+	ldx #>ls_nambuf+1
+	ldy ls_flen
+	dey
+	jsr txf2
+	jsr cnvbc
+	ldy #2
+	jsr fio1		; Filename out
+	ldy #13
+	lda #<strttx
+	ldx #>strttx
+	jsr txf2
+	ldx strtadr
+	lda strtadr+1
+	jsr cntbl
+	ldx #15
+	dey
+-	lda sy_numbers,y
+	sta fouttx,x
+	dex
+	dey
+	bpl -
+	ldx #1
+	ldy #0		; Startadress out
+	jmp fio2
+
+; ------------------------------------------------ on ERROR
+
+err6	jsr fileclose
+err7	jmp gd_spron
+
+; ------------------------------------------------ Text Output Handler
+
+tabigad	!wo godout	;  0 Fileinfo: which Type
+	!wo nam2out	;  2 Fileinfo: which Name
+	!wo versout	;  4 Fileinfo: Version
+	!wo dateout	;  6 Fileinfo: Date
+	!wo aut2out	;  8 Fileinfo: which Author
+	!wo lenout	; 10 Fileinfo: Length
+
+settab	lda #<(tabigad)
+	sta sc_texttab
+	lda #>(tabigad)
+	sta sc_texttab+1
+	rts 
+
+gettab	lda (sc_texttab),y
+	sta sc_screentab
+	iny 
+	lda (sc_texttab),y
+	sta sc_screentab+1
+	iny 
+	sty sc_merk
+	stx sc_merk+1
+	lda #0
+	tax 
+	tay 
+gt0	jsr gd_setpos
+	cpx #4
+	bne gt0
+	dex
+	clc		; Höhe zu groß?
+	lda sc_ho
+	adc sc_zl
+	cmp #25
+	bcc +
+	stx sc_ho		; dann: 3 (eff.: 1)
++	jsr gd_trim
+	jmp gd_initmove
+
+; ------------------------------------------------ Screenlist
+
+infolst	!by $00
+	!by 5,20,18,10,$40
+	!wo leave
+	!by $80
+
+; ------------------------------------------------ Data for Info
+
+type_s	!pet "DEVUNISYSAPP"
+type_t	!pet "DEVMODSVRLDR"
+type_o	!by 11,8,5,2
+txoffs	!by 2,5,8,11,14,17
+aut2out	!by 12,20,18
+lenout	!by 10,20,18
+dateout	!by 9,20,18
+versout	!by 8,20,18
+godout	!by 6,20,18
+nam2out	!by 5,20,18
+fouttx	!fill 16,32
+	!by 0
+godtx	!pet "xxx (GoDot: xxx)"
+datetx	!pet "Date:   "
+verstx	!pet "Version:    "
+lentx	!pet "Length:       "
+strttx	!pet "Start:        "
+strtadr	!wo 0
+
 ; -------------------------------------------------- 
-; -------------------------------------------------- Event: Toggle Dither Type
+; -------------------------------------------------- Event: Cache Screen
 ; -------------------------------------------------- 
 
-; ### removed:
-; -------------------------------------------------- 
-; -------------------------------------------------- Event: Balancing Requester
-; -------------------------------------------------- 
+; This routine will cache the complete textscreen and their colors
+; to $b500 (up to $bcff). If you have something to cache, you just
+; call ev_display from main, or go jsr evcache from within Slot4.
+; First call caches, next call uncaches. Be sure to set ls_temp to
+; $00 before first call.
+
+evcache	ldy ui_cacheflg
+	bmi cc1
+
+	lda #>vram
+	ldx #>ui_vcache
+	jsr swap
+	lda #>cram
+	ldx #>ui_ccache
+	jsr swap
+	dey
+	bmi cc2
+
+cc1	lda #>ui_vcache
+	ldx #>vram
+	jsr swap
+	lda #>ui_ccache
+	ldx #>cram
+	jsr swap
+
+cc2	sty ui_cacheflg
+	rts
+
+swap	sta ls_vekta8+1
+	txa
+	sta sc_pos+1
+	ldy #0
+	sty ls_vekta8
+	sty sc_pos
+	ldx #4
+-	lda (ls_vekta8),y
+	sta (sc_pos),y
+	iny
+	bne -
+	inc ls_vekta8+1
+	inc sc_pos+1
+	dex
+	bne -
+	rts
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Event: Display Preview
@@ -170,7 +476,6 @@ jevinfo     jmp leave
 ; When entering this event routine you have just clicked the 
 ; appropriate gadget. So, all values are still set here and now.
 ; The event routine first reverts the gadget's background.
-
 
 evprviu	jsr gd_initmove	; compute screen address
 	pha		; A-reg contains sc_vekt20+1
@@ -231,7 +536,7 @@ ploop	tya
 
 ; Now rendering the 4Bit Area to the sprites. Will be done as three
 ; bands of 12 tiles down from left to right.
-; 
+ 
 	ldx #$02		; three times 12 tiles (20 rows down)
 m0loop	txa
 	pha
@@ -374,12 +679,6 @@ xytab	!by $07,$91,$07,$a6
 	!by $1f,$91,$1f,$a6
 	!by $37,$91,$37,$a6
 	!by $00
-
-; ### removed:
-; -------------------------------------------------- 
-; -------------------------------------------------- Event: GoDot Guru
-; -------------------------------------------------- 
-
 
 ; --------------------------- 
 ; --------------------------- Input Routines

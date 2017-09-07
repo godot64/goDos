@@ -16,10 +16,12 @@
 ; -------------------------------------------------- Declarations
 
 	infosp		= 18		; Konstante
+	lrlimit		= 34
 
 	pport		= $01		; usually $36
 
 	amrk		= $30		; /$31
+	passover		= $30
 	xcnt		= $32
 	lcnt		= $33
 	bufoff		= $34
@@ -27,6 +29,8 @@
 	lflag		= $a8
 	brttmp		= $a9
 	crttmp		= $aa
+	czeile		= sc_merk
+	cspalte		= czeile+1
 
 	sprptr		= $07fa
 
@@ -91,7 +95,7 @@ start	ldx sc_screenvek	; save vector to main screen screenlist
 	dex
 	beq jevinfo	; 5: File Info
 	dex
-	beq leave		; 6: not used
+	beq jdrvslct	; 6: Drive Select
 	dex
 	beq leave		; 7: not used
 
@@ -101,6 +105,9 @@ leave	clc
 jinput	jmp initinp
 
 jevcache	jmp evcache
+
+jdrvslct	jsr evdrvslct
+	bcs listback 
 
 jevinfo	jsr evinfo
 
@@ -150,10 +157,6 @@ info	stx ui_cacheflg	; .x=0, cache flag auf 0
 	ldx #<infolst	; open info requester
 	ldy #>infolst
 	jsr gd_screen
-	ldx list
-	ldy list+1
-	stx sc_screenvek
-	sty sc_screenvek+1
 	
 	jsr settab
 
@@ -366,6 +369,7 @@ tabigad	!wo godout	;  0 Fileinfo: which Type
 	!wo dateout	;  6 Fileinfo: Date
 	!wo aut2out	;  8 Fileinfo: which Author
 	!wo lenout	; 10 Fileinfo: Length
+	!wo tl1		; 12 Drvselect: Colors
 
 settab	lda #<(tabigad)
 	sta sc_texttab
@@ -474,6 +478,74 @@ swap	sta ls_vekta8+1
 	bne -
 	rts
 
+
+; -------------------------------------------------- 
+; -------------------------------------------------- Event: Select Drive
+; -------------------------------------------------- 
+
+; ------------------------------------------------ FileInfo: Show 
+
+evdrvslct	ldx passover
+	stx tl1
+	inx
+	stx tl2
+	stx dsline
+
+	ldx #0
+	stx ui_cacheflg	; .x=0, cache flag auf 0
+	jsr evcache	; und Screen cachen
+	ldx #<drvlst	; open drv requester
+	ldy #>drvlst
+	jsr gd_screen
+
+	ldy #12		; umfärben
+	jsr settab
+	jsr gettab
+	ldx #2
+	jsr gd_fcol
+
+	lda passover+1	; Hilight active Drive:
+	and #3		; Drivenummer minus 8 als Index
+	tax 
+	sec 
+	lda sc_vekt20
+	sbc off,x
+	sta sc_vekt20
+	bcs os2
+	dec sc_vekt20+1
+os2	ldy #0
+	ldx #2		; Hilite-Farbe anwählen
+	lda sc_shadow+1,x
+os3	sta (sc_vekt20),y	; und direkt in den Screen
+	iny 
+	dex 
+	bne os3
+	jmp gd_eloop
+
+sevdrive	ldy #8		; dr8
+	lda dsline	; oben geklickt?
+	cmp czeile
+	beq +		; nein, unten, Sprung
+	ldy #10		; unten: dr10
++	lda #lrlimit
+	cmp cspalte
+	bcs +
+	iny		; rechts: dr9, dr11
++	sty passover+1	; neuer Drive in .y
+	sec
+	rts
+
+drvlst	!by $00
+tl1	!by 3,31,7,4,$f0
+	!wo sevdrive
+	!scr " 8  9@"
+	!by $c0
+tl2	!by 4,31,5
+	!scr "10 11@"
+	!by $80
+
+dsline	!by 0
+off	!by 80,77,40,37
 
 ; --------------------------- 
 ; --------------------------- Input Routines

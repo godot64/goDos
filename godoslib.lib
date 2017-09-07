@@ -226,7 +226,7 @@ ev_prviu		= $1756	; event "Show Preview"
 ev_info		= $1759	; event "Show Guru Alert"
 ev_area		= $175c	; event "Toggle Clip/Full"
 ev_dith		= $175f	; event "Select Dither Type"
-ev_display	= $1762	; event "Render Graphics"
+ev_cache		= $1762	; event "Cache Screen"
 ev_pal		= $1765	; event "Open Palette Requester"
 ev_balance	= $1768	; event "Open Balancing Requester"
 
@@ -244,9 +244,9 @@ ev_save		= $1922	; event "Save a Graphics File"
 
 gd_xload		= $1924	; Load with DM_MISC set (any data file, care for LS_ADRMISC!)
 
-ev_ldr		= $192e	; event "Load a Loader Module"
-ev_svr		= $1938	; event "Load a Saver Module"
-ev_mod		= $1942	; event "Load an Image Processing Module" (a "Modifier")
+ev_app		= $192e	; event "Load an APP"
+ev_sys		= $1938	; event "Load a SYS Module"
+ev_mod		= $1942	; event "Load a Widget Module"
 
 gd_xloadsave	= $194b	; open filerequester
 gd_setspos	= $1a17	; set position parameters for Units gadget in filerequester

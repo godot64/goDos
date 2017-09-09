@@ -11,6 +11,8 @@
 ; 1.01, 25.08.17, changed: max # of entries in dir window: variable
 ; 1.02, 26.08.17, added: 2 new gadget types, flat style
 ;                 changed: UI (no Start Menu anymore)
+;       02.08.17, fixed some minor bugs
+; 1.03, 05.09.17, opened system for apps (finally leaving GoDot)
 ;
 ; -------------------------------------------------- 
 
@@ -53,6 +55,7 @@ box05	!by 125,095,032,120,032,098,113,115,114	;  5
 	forceoff	= $cb08		; direct jump into dev.REU
 
 	border	= $d020
+
 	irqend	= $ea7e		; C64 Kernal Vectors
 	reset	= $fce2
 	second	= $ff93
@@ -606,7 +609,7 @@ most	lda #0
 ; -------------------------------------------------- Version Number
 
 gd_version
-	!by $01,$02	; kernal version number, SED-mode
+	!by $01,$03	; kernal version number, SED-mode
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Entry to U&I, Main Loop
@@ -1125,7 +1128,8 @@ ev_disp2	ldy #7		; func # 7
 
 ; -------------------------------------------------- Event: Display Preview
 
-ev_prviu	ldy #6		; func # 6
+ev_drvslct
+	ldy #6		; func # 6
 	!by $2c
 
 ; -------------------------------------------------- former Event: Show Guru
@@ -1142,9 +1146,9 @@ ev_area	ldy #4		; func # 4
 ev_dith	ldy #3		; func # 3
 	!by $2c
 
-; -------------------------------------------------- Event: Display Graphics
+; -------------------------------------------------- Event: Cache Screen
 
-ev_display
+ev_cache
 	ldy #2		; func # 2
 	!by $2c
 
@@ -1246,9 +1250,9 @@ fill:	lda #40		; width 40
 	sty sc_sp
 fillit:	sty sc_loop
 	jsr initmove	; compute screenaddress
-	ldx #2
-	lda #$60		; get fill character (bisher $e7)
+	lda #$60		; get fill character
 	jsr fi0		; fill now
+	ldx #2		; .x: Index to nrmcolor
 	jmp fcol
 
 ; ------------------------------------------------ Event: U&I Menu
@@ -1260,8 +1264,8 @@ ui_menu	jsr menu
 
 ; ------------------------------------------------ Event: U&I Load System Tool
 
-ui_ldsys	jsr mainscr
-	jmp ev_sys
+ui_apps	jsr mainscr
+	jmp ev_app
 
 ; ------------------------------------------------ Event: Exit U&I
 
@@ -1439,7 +1443,7 @@ esv1	lda #<(joker)
 
 ; -------------------------------------------------- Event: Install Loader
 
-ev_ldr	lda #<(ldr)
+ev_app	lda #<(ldr)
 	pha
 	lda #>(ldr)
 	pha
@@ -2150,7 +2154,7 @@ ui_first	lda sc_normtext
 ui_load	jsr mainscr
 	jmp ev_load
 
-ui_mod	jsr mainscr
+ui_mods	jsr mainscr
 	jmp ev_mod
 
 ui_about	jsr mainscr
@@ -2177,20 +2181,7 @@ ui_about	jsr mainscr
 ; ------------------------------------------------ Event: Explorer
 
 ui_sys	jsr mainscr
-	sta ls_loadsave
 	jmp ss1
-
-; ------------------------------------------------ Event: Show Image
-
-ui_show	jsr mainscr
-	ldx modul+8	; App 4BitViewer is App #1
-	dex
-	bne +
-	jsr ui_load
-	lda #2
-	sta modul+9
-	jsr modul
-+	jmp mainscr
 
 ; ------------------------------------------------ Event: Execute MOD
 
@@ -2200,8 +2191,8 @@ ui_exec	jsr mainscr
 
 ; --------------------------- Box definieren
 
-box17	!by $e7,$e2,$e6,$e1,$20,$e3,$e5,$e0,$e4
-box18	!by $eb,$ed,$ec,$40,$20,$6d,$ea,$ee,$e9
+box16	!by $e7,$e2,$e6,$e1,$20,$e3,$e5,$e0,$e4
+box17	!by $eb,$ed,$ec,$40,$20,$6d,$ea,$ee,$e9
 
 makebox	stx ls_adrmisc
 	sty ls_adrmisc+1
@@ -2209,10 +2200,10 @@ makebox	stx ls_adrmisc
 	ldy #8
 -	lda box05,y
 	pha
-	lda box17,x
+	lda box16,x
 	sta box05,y
 	pla
-	sta box17,x
+	sta box16,x
 	dex
 	dey
 	bpl -
@@ -2238,49 +2229,50 @@ patch	lda #$4c		; JMP
 	sta patch1
 	rts
 
+; ------------------------------------------------ Event: Show Image
+
+ui_show	jsr mainscr
+	jsr ui_load	; load and show
+	jsr modul
+	jmp mainscr
+
 ; -------------------------------------------------- 
 
 mainlst	!by $00
 
-	!by 19,0,3,3,$c5	; About
+	!by 0,35,5,3,$c5	; About
 	!wo ui_about
-	!scr "?@"
+	!scr "U&I@"
 
-	!by 19,3,9,3,$c5	; Exec APP
+	!by 22,0,7,3,$c5	; Explorer
+	!wo ui_sys
+	!scr "Start@"
+
+	!by 22,7,9,3,$c5	; Exec APP
 	!wo ui_show
 	!scr "Run APP@"
 
-	!by 19,12,9,3,$c5	; Exec MOD
+	!by 22,16,9,3,$c5	; Exec MOD
 	!wo ui_exec
 	!scr "Run MOD@"
 
-	!by 22,0,6,3,$c5	; Explorer
-	!wo ui_sys
-	!scr "Disk@"
-
-	!by 22,6,6,3,$c5	; Load APPs
-	!wo ev_ldr
-	!scr "APPs@"
-
-	!by 22,12,6,3,$c5	; Load MODs
-	!wo ev_mod
-	!scr "MODs@"
-
-	!by 22,34,6,3,$c5	; Exit
+	!by 22,35,5,3,$c5	; Exit
 	!wo ui_exit
-	!scr "Exit@"
+	!scr "Bye@"
 
 	!by $80
 
+; -------------------------------------------------- 
+
 aboutlst	!by $00
 
-	!by 5,8,24,6,$d5
+	!by 7,8,24,6,$d5
 	!wo se_cancel
 	!scr "goDos v"
 ui_ver	!scr "0.00@"
 
-	!by $c0,7,8,21
-	!scr "C64 OS Extender by AD@"
+	!by $c0,9,8,22
+	!scr "C64 OS Extender by $AD@"
 
 	!by $80
 

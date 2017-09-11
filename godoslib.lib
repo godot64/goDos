@@ -60,7 +60,6 @@ rm_rlen		= $02aa	; length of filename for ram device
 rm_ramundo	= $02ab	; flag: undo performed (0 if not)
 ls_bootdrive	= $02ac	; drive where GoDot booted from
 rm_cntlns		= $02ad	; amount of files in file requester (ram device)
-gr_qlock		= $02ae	; flag: quantization locked if 0 (unused yet)
 rm_tmpsaved	= $02af	; flag: temp area filled
 gr_basepal	= $02b0	; base palette (16 bytes)
 sc_pointer	= $02c0	; definition of mouse pointer (63 bytes)
@@ -80,9 +79,7 @@ sc_lastclpbr	= $033e	; width
 sc_lastclpho	= $033f	; height
 
 gr_orderedpat	= $0340	; definition of Ordered Pattern, 64 bytes
-gr_rgb		= $0380	; definition of C64 colors, 48 bytes
 gr_btab		= $03b0	; table of balancing (16 bytes)
-gr_defpals	= $03c0	; definition of the 14 different default palettes (28 bytes)
 ls_lastname	= $03dc	; name of current picture in buffer, 16 bytes
 rm_swapw		= $03ec	; buffer for swap values (ram device, 7 bytes)
 rm_werte		= $03f3	; buffer for REU register values (ram device, 7 bytes)
@@ -105,8 +102,6 @@ rm_nextentry	= $0f90	; next directory entry in ram device (number)
 sy_newposx	= $0f91	; mouse, can't be altered
 sy_newposy	= $0f92	; mouse, can't be altered
 sc_scvek2		= $0f93	; /$0f94: buffer for SC_SCREENVEK
-gr_cmode		= $0f95	; current graphics mode (0 = hires; 2 = multicolor)
-gr_howmany	= $0f96	; current amount of grays to be rendered (2 to 16)
 gr_picked		= $0f97	; current palette color (msb set if inactive)
 gr_palette	= $0f98	; current palette (16 bytes)
 
@@ -118,7 +113,6 @@ ls_track		= $0faf	; current track on disk
 ls_sector		= $0fb0	; current sector
 ls_index		= $0fb1	; offset into current dirblock
 sy_framecount	= $0fb2	; /$0fb3: not used yet
-gr_fbkcol		= $0fb3	; multicolor file's own background color
 ls_err1		= $0fb4	; first digit of floppy error message (unused but always set)
 ls_err2		= $0fb5	; second digit
 ls_cblocks	= $0fb6	; amount of directory blocks in filerequester
@@ -138,7 +132,6 @@ sc_clipped	= $0fc2	; flag: clip set and active if not 0
 ls_saveto		= $0fc3	; drive where currently to save to
 ls_loadfrom	= $0fc4	; drive where currently to load from
 sc_stop		= $0fc5	; flag: STOP pressed if not 0 (must be initialized by 0)
-gr_bkcol		= $0fc6	; background color for multicolor mode
 rm_vdcflag	= $0fc7	; status of VDC ram
 sc_movetab	= $0fd8	; text/textcolor output buffer, 39 bytes plus $00 (40 bytes)
 
@@ -194,6 +187,7 @@ gd_xtxtggl	= $146d	; swap gadget text and an alternate one, vector to that in .X
 gd_xswap4k	= $1470	; swap Execution Area and module area, highbyte of specific module area in .X
 gd_xcnvdez	= $1473	; convert value in .A to 2 digits (in .X and .A)
 gd_xloadm		= $1476	; open file requester for non-system filetypes,
+
 gd_listen		= $147a	; sends Listen (drive in .A) and secondary address after Listen (in .Y)
 gd_talk		= $1481	; sends Talk (drive in .A) and secondary address for Talk (in .Y)
 gd_sendcom	= $1488	; sends floppy command, address in .X and .Y (lo/hi), length in .A, then Unlisten
@@ -221,14 +215,14 @@ se_delete		= $16d0	; subevent "Scratch File"
 ev_exec		= $1742	; event "Execute Module"
 se_save		= $1746	; subevent "Save Data"
 se_input		= $174d	; subevent "Input Filename" (part of file requester)
-ev_disp2		= $1753	; event "Display Rendered Graphics"
-ev_prviu		= $1756	; event "Show Preview"
-ev_info		= $1759	; event "Show Guru Alert"
-ev_area		= $175c	; event "Toggle Clip/Full"
-ev_dith		= $175f	; event "Select Dither Type"
+ev_disp2		= $1753	; * event "Display Rendered Graphics"
+ev_drvslct	= $1756	; event "Show Drive Selector"
+ev_info		= $1759	; event "Show File Info"
+ev_area		= $175c	; * event "Toggle Clip/Full"
+ev_dith		= $175f	; * event "Select Dither Type"
 ev_cache		= $1762	; event "Cache Screen"
-ev_pal		= $1765	; event "Open Palette Requester"
-ev_balance	= $1768	; event "Open Balancing Requester"
+ev_pal		= $1765	; * event "Open Palette Requester"
+ev_balance	= $1768	; * event "Open Balancing Requester"
 
 gd_getback	= $1777	; reswap GD_XSWAP4K
 
@@ -265,10 +259,7 @@ gd_onebyte	= $1c96	; read one byte from file (return in .A) and check status (in
 gd_testram	= $1ca9	; check for active RAM device (status bit must be EQUAL then)
 gd_swapd		= $1caf	; switch RAM device on
 gd_reu		= $1cb4	; send REU command, command in .A, register parameters in RM_WERTE
-ls_picname	= $1fa8	; name of current image in screencode (16 bytes)
-ls_iloader	= ls_picname+$16	; loader name
-ls_imode		= ls_picname+$22	; graphics mode
-ls_idrive		= ls_picname+$2e	; GoDot mode
+ui_gettab		= $1ef8	; routine to compute screen position of next output
 
 sy_global		= $3f40	; buffer for various purposes (192 bytes)
 sy_4bit		= $4000	; start of 4bit image data

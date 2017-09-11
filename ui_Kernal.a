@@ -1,10 +1,10 @@
 
-!src "..\godotkernal.lib"
+!src "..\godoskernal.lib"
 *= $1000
 
 ; -------------------------------------------------- 
 ;
-; This is the U&I kernel 1.01 
+; This is the U&I kernel 
 ; It is based on GoDot kernel v1.30.
 ;
 ; 1.00, 06.08.17, first release
@@ -13,6 +13,7 @@
 ;                 changed: UI (no Start Menu anymore)
 ;       02.08.17, fixed some minor bugs
 ; 1.03, 05.09.17, opened system for apps (finally leaving GoDot)
+; 1.04, 10.09.17, beginning to transfer system code to system (ui_gettab)
 ;
 ; -------------------------------------------------- 
 
@@ -609,7 +610,7 @@ most	lda #0
 ; -------------------------------------------------- Version Number
 
 gd_version
-	!by $01,$03	; kernal version number, SED-mode
+	!by $01,$04	; kernal version number, SED-mode
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Entry to U&I, Main Loop
@@ -2189,10 +2190,17 @@ ui_exec	jsr mainscr
 	jsr ev_exec
 	jmp mainscr
 
+; ------------------------------------------------ Event: Show Image
+
+ui_show	jsr mainscr
+	jsr ui_load	; load and show
+	jsr modul
+	jmp mainscr
+
 ; --------------------------- Box definieren
 
 box16	!by $e7,$e2,$e6,$e1,$20,$e3,$e5,$e0,$e4
-box17	!by $eb,$ed,$ec,$40,$20,$6d,$ea,$ee,$e9
+box17	!by $eb,$ed,$ec,$c0,$20,$6d,$ea,$ee,$e9
 
 makebox	stx ls_adrmisc
 	sty ls_adrmisc+1
@@ -2229,12 +2237,24 @@ patch	lda #$4c		; JMP
 	sta patch1
 	rts
 
-; ------------------------------------------------ Event: Show Image
+; -------------------------------------------------- Text Output Handler
 
-ui_show	jsr mainscr
-	jsr ui_load	; load and show
-	jsr modul
-	jmp mainscr
+ui_gettab	lda (sc_texttab),y
+	sta sc_screentab
+	iny 
+	lda (sc_texttab),y
+	sta sc_screentab+1
+	iny 
+	sty sc_merk
+	stx sc_merk+1
+	lda #0
+	tax 
+	tay 
+-	jsr setpos
+	cpx #4
+	bne -
+	jsr trim
++	jmp initmove
 
 ; -------------------------------------------------- 
 

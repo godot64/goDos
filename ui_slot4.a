@@ -12,25 +12,20 @@
 ; 0.01, 27.08,17, added: FileInfo for Explorer
 ; 0.02, 29.08.17, added: Screen Cache
 ; 0.03, 01.09.17, removed Preview
+; 0.04, 10.09.17, changed: Text Ouput Handler (now in Kernal)
 ;
 ; -------------------------------------------------- Declarations
 
-	infosp		= 18		; Konstante
-	lrlimit		= 34
+	infosp		= 18		; Konstanten
+	lrlimit		= 29
 
 	pport		= $01		; usually $36
 
-	amrk		= $30		; /$31
-	passover		= $30
-	xcnt		= $32
-	lcnt		= $33
-	bufoff		= $34
-	offout		= $35
-	lflag		= $a8
-	brttmp		= $a9
-	crttmp		= $aa
+	passover		= $30		; /$31
+
 	czeile		= sc_merk
 	cspalte		= czeile+1
+	amrk		= ls_adrmisc	; lo/hi
 
 	sprptr		= $07fa
 
@@ -71,8 +66,8 @@
 	!wo modend
 	!wo 0
 	!pet "goDos f000 slot4"
-created	!pet "0.03"
-	!pet "01.09.17"
+created	!pet "0.04"
+	!pet "10.09.17"
 	!pet "A.Dettke        "
 
 ; -------------------------------------------------- Module Management
@@ -260,7 +255,7 @@ fi_out	inc lcnt
 fio1	ldx lcnt
 fio2	lda txoffs,x
 	sta offout
-	jsr gettab	; .y: Offset auf Record-Adresse
+	jsr ui_gettab	; .y: Offset auf Record-Adresse
 	jsr cnvbc
 	ldy offout	; .y: Offset auf Textadresse
 	jmp gd_xtxout1
@@ -363,6 +358,12 @@ err7	jmp gd_spron
 
 ; ------------------------------------------------ Text Output Handler
 
+settab	lda #<(tabigad)
+	sta sc_texttab
+	lda #>(tabigad)
+	sta sc_texttab+1
+	rts 
+
 tabigad	!wo godout	;  0 Fileinfo: which Type
 	!wo nam2out	;  2 Fileinfo: which Name
 	!wo versout	;  4 Fileinfo: Version
@@ -370,36 +371,6 @@ tabigad	!wo godout	;  0 Fileinfo: which Type
 	!wo aut2out	;  8 Fileinfo: which Author
 	!wo lenout	; 10 Fileinfo: Length
 	!wo tl1		; 12 Drvselect: Colors
-
-settab	lda #<(tabigad)
-	sta sc_texttab
-	lda #>(tabigad)
-	sta sc_texttab+1
-	rts 
-
-gettab	lda (sc_texttab),y
-	sta sc_screentab
-	iny 
-	lda (sc_texttab),y
-	sta sc_screentab+1
-	iny 
-	sty sc_merk
-	stx sc_merk+1
-	lda #0
-	tax 
-	tay 
-gt0	jsr gd_setpos
-	cpx #4
-	bne gt0
-	dex
-	clc		; Höhe zu groß?
-	lda sc_ho
-	adc sc_zl
-	cmp #25
-	bcc +
-	stx sc_ho		; dann: 3 (eff.: 1)
-+	jsr gd_trim
-	jmp gd_initmove
 
 ; ------------------------------------------------ Screenlist
 
@@ -413,13 +384,13 @@ infolst	!by $00
 type_s	!pet "DEVUNISYSAPP"
 type_t	!pet "DEVMODSVRLDR"
 type_o	!by 11,8,5,2
-txoffs	!by 2,5,8,11,14,17
-aut2out	!by 12,infosp,18
-lenout	!by 10,infosp,18
-dateout	!by 9,infosp,18
-versout	!by 8,infosp,18
-godout	!by 6,infosp,18
-nam2out	!by 5,infosp,18
+txoffs	!by 3,7,11,15,19,23
+aut2out	!by 12,infosp,18,3
+lenout	!by 10,infosp,18,3
+dateout	!by 9,infosp,18,3
+versout	!by 8,infosp,18,3
+godout	!by 6,infosp,18,3
+nam2out	!by 5,infosp,18,3
 fouttx	!fill 16,32
 	!by 0
 godtx	!pet "xxx (GoDot: xxx)"
@@ -428,6 +399,10 @@ verstx	!pet "Version:    "
 lentx	!pet "Length:       "
 strttx	!pet "Start:        "
 strtadr	!wo 0
+xcnt	!by 0
+lcnt	!by 0
+bufoff	!by 0
+offout	!by 0
 
 ; -------------------------------------------------- 
 ; -------------------------------------------------- Event: Cache Screen
@@ -500,7 +475,7 @@ evdrvslct	ldx passover
 
 	ldy #12		; umfärben
 	jsr settab
-	jsr gettab
+	jsr ui_gettab
 	ldx #2
 	jsr gd_fcol
 
@@ -527,7 +502,7 @@ sevdrive	ldy #8		; dr8
 	cmp czeile
 	beq +		; nein, unten, Sprung
 	ldy #10		; unten: dr10
-+	lda #lrlimit
++	lda #lrlimit	; lrlimit = [tl1+1]+3
 	cmp cspalte
 	bcs +
 	iny		; rechts: dr9, dr11
@@ -536,11 +511,11 @@ sevdrive	ldy #8		; dr8
 	rts
 
 drvlst	!by $00
-tl1	!by 3,31,7,4,$f0
+tl1	!by 3,26,7,4,$f0
 	!wo sevdrive
 	!scr " 8  9@"
 	!by $c0
-tl2	!by 4,31,5
+tl2	!by 4,26,5
 	!scr "10 11@"
 	!by $80
 

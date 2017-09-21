@@ -410,9 +410,9 @@ offout	!by 0
 
 ; This routine will cache the complete textscreen and their colors
 ; to $b500 (up to $bcff). If you have something to cache, you just
-; call ev_display from main, or go jsr evcache from within Slot4.
-; First call caches, next call uncaches. Be sure to set ui_cacheflg 
-; to $00 before first call.
+; call ev_cache from main, or go jsr evcache from within Slot4.
+; First call will cache, next call uncaches. Be sure to set 
+; ui_cacheflg to $00 before first call.
 
 evcache	ldy ui_cacheflg
 	bmi cc1
@@ -472,13 +472,14 @@ evdrvslct	ldx passover
 	ldx #<drvlst	; open drv requester
 	ldy #>drvlst
 	jsr gd_screen
+	jsr hilite
+	jmp gd_eloop
 
-	ldy #12		; umfärben
+hilite	ldy #12		; umfärben
 	jsr settab
 	jsr ui_gettab
 	ldx #2
 	jsr gd_fcol
-
 	lda passover+1	; Hilight active Drive:
 	and #3		; Drivenummer minus 8 als Index
 	tax 
@@ -495,7 +496,7 @@ os3	sta (sc_vekt20),y	; und direkt in den Screen
 	iny 
 	dex 
 	bne os3
-	jmp gd_eloop
+	rts
 
 sevdrive	ldy #8		; dr8
 	lda dsline	; oben geklickt?
@@ -507,6 +508,7 @@ sevdrive	ldy #8		; dr8
 	bcs +
 	iny		; rechts: dr9, dr11
 +	sty passover+1	; neuer Drive in .y
+	jsr hilite
 	sec
 	rts
 

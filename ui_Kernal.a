@@ -14,6 +14,7 @@
 ;       02.08.17, fixed some minor bugs
 ; 1.03, 05.09.17, opened system for apps (finally leaving GoDot)
 ; 1.04, 10.09.17, beginning to transfer system code to system (ui_gettab)
+; 1.05, 17.09.17, changed gd_makedir to retrieve all active files (DEL included)
 ;
 ; -------------------------------------------------- 
 
@@ -1253,7 +1254,7 @@ fillit:	sty sc_loop
 	jsr initmove	; compute screenaddress
 	lda #$60		; get fill character
 	jsr fi0		; fill now
-	ldx #2		; .x: Index to nrmcolor
+	ldx #0		; .x: Index to shadow
 	jmp fcol
 
 ; ------------------------------------------------ Event: U&I Menu
@@ -1820,14 +1821,12 @@ gd_makedir  lda #0
 	lda #2
 	jsr bindex
 	lda dirbuf,x	; get C= filetype
-	and #7		; 0/5 =DEL/CBM; 6 =DIR
-	beq mdr2
-	cmp #5
-	bcs mdr2
-;
+	beq mdr2		; DEL abweisen
+	!fill 6,$ea	; 6 NOP	### 1.05: aktive Files durchlassen, auch DIR und CBM
+
 	lda #$10		; length of filename (16)
 	sta sc_merk+1
-;
+
 	lda ls_dirmask	; filetype graphics?
 	tay
 	ora ls_showfiles	; forced to show all?
@@ -2260,21 +2259,21 @@ ui_gettab	lda (sc_texttab),y
 
 mainlst	!by $00
 
-	!by 0,35,5,3,$c5	; About
+	!by 0,35,5,3,$d5	; About
 	!wo ui_about
 	!scr "U&I@"
 
-	!by 22,0,7,3,$c5	; Explorer
+	!by 22,0,10,3,$c5	; Explorer
 	!wo ui_sys
-	!scr "Start@"
+	!scr "Explorer@"
 
-	!by 22,7,9,3,$c5	; Exec APP
+	!by 19,0,10,3,$c5	; Exec APP
 	!wo ui_show
-	!scr "Run APP@"
+	!scr "Run APPs@"
 
-	!by 22,16,9,3,$c5	; Exec MOD
+	!by 16,0,10,3,$c5	; Exec MOD
 	!wo ui_exec
-	!scr "Run MOD@"
+	!scr "Run MODs@"
 
 	!by 22,35,5,3,$c5	; Exit
 	!wo ui_exit

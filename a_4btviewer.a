@@ -8,6 +8,8 @@
 ; goDos App to load and view GoDot 4Bit images
 ;
 ; 1.00, 17.08.17, first release
+; 1.01, 05.09.17, removed storing colors
+; 1.02, 22.09.17, added recognition of Cancel 
 ;
 ; ------------------------------------------------------------ 
 
@@ -81,36 +83,31 @@ header	jmp start
 	!by 0		; no own requester
 	!by 1		; dirty
 	!wo modend
-	!by 1		; App-Number
-used	!by $ff		; Flag for behaviour
+	!by 0
+	!by 0
 	!pet "4bit ldr&viewer "
-	!pet "1.00"
-	!pet "17.08.17"
+	!pet "1.02"
+	!pet "22.09.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Leave Module
 
-jrequ	jmp requ
 jerror	jmp error
-jview	jsr evdisp2
 
-cancel	lda #$ff
-	sta used
-cn2	sec
+cancel	sec
 	rts
 
 ; ----------------------------------------- Main
 
-start	ldx #0
-	stx sc_texttab+1
-	ldx used		; first call?
-	bmi jrequ		; yes, pre-requester
-	beq cancel	; error and finished
-	cpx #2
-	beq jview
-	cpx #3		; all finished?
+start	lda sc_merk
+	cmp #17
+	bne +
+	lda sc_merk+1
+	cmp #26
 	bcs cancel
-
++	ldx #0
+	stx sc_texttab+1
+	stx status
 st0	ldy #0		; init width and copy of
 	sty breite	; width ("breite" means width)
 	sty breite+1
@@ -235,7 +232,11 @@ ld7	jsr gd_spron	; Sprites on
 
 	jsr clrmess
 
-	jmp cancel	; finished
+	lda ls_vekta8	; image loaded completely?
+	ora ls_vekta8+1
+	bne +		; then view it
+view	jsr evdisplay
++	jmp cancel
 
 ; ----------------------------------------- Subroutines
 
@@ -274,7 +275,6 @@ breite	!wo 0
 hoehe	!by 25
 list	!by $00,$00
 bktmp	!by 0
-pdis	!by 0
 
 ; ----------------------------------------- 
 
@@ -282,20 +282,6 @@ filltab	!by 160,93,103,127,126,124,105,109
 message	!scr " Reading  "
 mess	!fill 22,32
 	!by 0
-
-; ----------------------------------------- Display File Requester
-
-requ	ldx #0
-	stx status
-	inx		; otherwise: open file requester for load
-	stx used		; used=1
-	jsr start
-	lda ls_vekta8	; image loaded completely?
-	ora ls_vekta8+1
-	bne +		; then view it
-view	jsr evdisplay
-+	jmp cancel
-
 
 ; ----------------------------------------- Read Floppy File/decompress
 
@@ -473,7 +459,6 @@ gbh2	tax		; .a (amount of tiles) times 32
 
 redisplay	ldx gr_palette	; bordercolor is palette entry 0
 	stx border
-	jsr setcolors	; reget colors
 	lda gr_cmode	; which graphics mode?
 	beq dp4
 	lda #$18		; multi when 2
@@ -490,21 +475,9 @@ dp4	lda #$1b		; hires when 0
 dp1	lda sc_keyprs	; wait for key or STOP
 	ora sc_stop
 	beq dp1
-	jsr getcolors	; save colors
 	jsr tmode		; switch textmode on
-	lda sc_screenvek	; save vector to current screenlist
-	pha
-	lda sc_screenvek+1
-	pha
-	lda pdis		; is palette requester working?
-	beq dp5
-	ldx list		; yes, rebuild main screen
-	ldy list+1
-	jsr gd_screen
-dp5	pla		; rebuild palette requester
-	tay
-	pla
-	tax
+	ldx sc_screenvek	; save vector to current screenlist
+	ldy sc_screenvek+1
 	jsr gd_screen
 dp3	clc		; finished (stay in list)
 	rts
@@ -523,33 +496,6 @@ tmode	ldx #$13
 	sta backgr
 	rts
 
-; -------------------------------------------------- Graphics Colors Management
-
-setcveks	sei		; called from GETCOLORS
-	lda #$35		; set C64 to IO off
-	sta pport
-	lda #>(cstart)	; first: save 1000 color RAM nibbles to loader area
-	ldx #$d8		; from $d800
-	bne scv0
-setbveks	lda #>(vram1)	; second: save upper 500 video RAM bytes to saver area
-	ldx #$04		; from $0400
-	dec pport		; set C64 completely to RAM
-scv0	stx dest1+1
-	ldy #$00
-	sty sc_merk
-	sty dest1
-	dey
-setlast	sty gr_bkcol	; third: save lower 500 video RAM bytes to module area
-	ldy #<(cstart)
-	sty sc_vekt20	; vector to data
-	sta sc_vekt20+1
-	lda #<(500)	; counter
-	sta ls_vekta8
-	lda #>(500)
-	sta ls_vekta8+1
-	ldy #$00
-	rts
-
 ; -------------------------------------------------- Counters
 
 count	inc sc_vekt20	; increment source data vector
@@ -564,106 +510,6 @@ cou6	lda ls_vekta8	; decrement counter
 cou7	dec ls_vekta8
 	lda ls_vekta8	; until zero
 	ora ls_vekta8+1
-	rts
-
-; -------------------------------------------------- Save Graphics Colors
-
-getcolors	jsr setcveks	; set vectors accordingly
-stco	lda (dest1),y	; compress $d800-nibbles
-	sta sc_merk
-	inc dest1
-	bne stc0
-	inc dest1+1
-stc0	lda (dest1),y
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	lda sc_merk
-	sta (sc_vekt20),y	; and buffer them
-	jsr count
-	bne stco
-
-	jsr setbveks	; buffer video RAM, part 1
-stc1	lda (dest1),y
-	sta (sc_vekt20),y
-	jsr count
-	bne stc1
-	ldy gr_bkcol	; flag: last time?
-	bpl scv1		; yes, finished
-
-	ldy #$00		; buffer video RAM, part 2
-	lda #>(vram2)
-	jsr setlast
-	beq stc1		; unconditional branch
-
-scv1	lda #$36		; set C64 to BASIC off
-	sta pport
-	cli
-	lda backgr	; set graphics background color value
-	and #$0f
-	sta gr_bkcol
-	rts
-
-; -------------------------------------------------- Restore Graphics Colors
-
-setcolors	lda gr_bkcol	; restore background color
-	sta backgr
-	pha		; save for last time
-
-	jsr setcveks	; set vectors accordingly
-stc2	sty sc_merk	; decompress color RAM nibbles
-	lda (sc_vekt20),y
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	lsr
-	rol sc_merk
-	sta (dest1),y	; and store them
-	inc dest1
-	bne stc3
-	inc dest1+1
-stc3	lda sc_merk
-	sta (dest1),y
-	jsr count
-	bne stc2
-
-	jsr setbveks	; restore video RAM, part 1
-stc4	lda (sc_vekt20),y
-	sta (dest1),y
-	jsr count
-	bne stc4
-
-	ldy gr_bkcol	; flag: last time?
-	bpl scv1		; yes, finished
-
-	pla		; restore video RAM, part 2
-	tay
-	lda #>(vram2)
-	jsr setlast
-	beq stc4
-
-; -------------------------------------------------- 
-; -------------------------------------------------- Event Re-Display Graphics
-; -------------------------------------------------- 
-
-evdisp2	lda gr_redisp	; save current re-display status
-	pha
-	ldx #$01		; force re-display
-	stx gr_redisp
-	dex		; clear STOP key
-	stx sc_stop
-	jsr redisplay	; re-display
-	jsr dp1		; wait for keypress
-	pla		; restore redisp status
-	sta gr_redisp
 	rts
 
 ; -------------------------------------------------- Event Display Graphics

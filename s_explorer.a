@@ -7,7 +7,7 @@
 ; sys.Explorer
 ; goDos System App for File Management
 ;
-; 1.00, 16.09.17
+; 1.00, 25.09.17
 ;
 ; ------------------------------------------------ 
 
@@ -24,10 +24,13 @@
 	sdrive		= $36
 	ddrive		= $37
 	dirflg		= $38
-	counter		= $39
+	counter		= $39		; /$3a
 	stmerk		= $3b
 	xcnt		= $3c
-	blcnt		= $3d
+	blcnt		= $3d		; /$3e
+	dirwins		= $3f
+	dirend		= $40
+	lblock		= $41
 
 	byte		= $a3
 	fcolor		= $ac
@@ -58,7 +61,9 @@
 	blksfree		= dirbuffer+32
 	filetype		= dirbuffer+54
 	fftrack		= dirbuffer+160
-	tagbuffer		= dirbuffer+256
+	nexttop		= $be00		; dirbuffer+256
+	tagbuffer		= $b500
+	sysdirbuf		= $bf00
 	buffer		= ui_vcache	; transport buffer (1 block)
 
 	sprite		= $d015
@@ -76,7 +81,7 @@
 	!wo 0
 	!pet "U&I Explorer    "
 	!pet "1.00"
-	!pet "16.09.17"
+	!pet "25.09.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Main
@@ -115,17 +120,19 @@ st0	sta sdrive	; Source Drive setzen
 	txa 
 st1	sta ddrive	; Destination Drive setzen
 
-	jsr makechr
 	jsr uiout		; Explorer-Oberfläche ausgeben
 
 	lda #$60		; Patch: RTS
 	sta patch1	; (Floppy-Statusanzeige verhindern)
+	sta patch3	; (ersten Count verhindern)
 	jsr shddrv
 	jsr sevsdrive	; Source Drive: Info
 	jsr getdirall	; Komplett-Dir holen
 	jsr cntfiles	; Files zählen
-	jsr cmpflen
+	jsr cmpflen	; Längen in ersten Panel anzeigen
 	jsr chkdrvpar	; System Dir Records holen
+	lda #$4c
+	sta patch3
 	lda sdrive	; erster Start?
 	eor ddrive
 	bne +
@@ -162,12 +169,13 @@ sq1	sta paneltx+1
 
 ; ------------------------------------------------ Event: Stay in Module
 
-stay	clc		; don't leave
+stay	jsr gd_spron
+	clc		; don't leave
 	rts
 
 ; ------------------------------------------------ Event: Choose an APP
 
-sevapps	lda #16
+sevapps	lda #16		; Systemwert für dlines
 	sta ls_dlines
 	lda #2
 	sta patch2
@@ -179,15 +187,13 @@ sevapps	lda #16
 
 ; ------------------------------------------------ Event: Choose a Module
 
-sevmods	lda #16
+sevmods	lda #16		; Systemwert für dlines
 	sta ls_dlines
 	jsr cache
 	jsr svscreen
 	jsr ui_mods
 svm0	ldx maxdlines
-	dex
-	dex
-	stx ls_dlines
+	jsr setdls
 	jsr ev_cache
 	ldx #0
 	stx ls_dirmask
@@ -270,19 +276,21 @@ sh0	sty which
 sevxdrvs	lda ls_flen
 	beq +
 	jsr cnva6
-+	jsr sevsdrive
-	ldx sdrive	; Drive-Nummer tauschen
++	lda ls_drive
+	eor sdrive
+	beq +
+	jsr sevsdrive
++	ldx sdrive	; Drive-Nummer tauschen
 	lda ddrive
 	sta sdrive	; dst ist jetzt src
 	sta ls_drive
 	stx ddrive
+	jsr desthead	; Dest-Angaben umkopieren
 	jsr getdirall	; Src neu einlesen
 	jsr cntfiles	; Dateien zählen
-	jsr desthead	; Dest-Angaben umkopieren
 	jsr shddrv
 	jsr sevsdrive
 	jmp cmpflen
-
 
 ; ------------------------------------------------ Event: Select Source Drive
 
@@ -298,7 +306,7 @@ sevddslct	ldx #1
 	jsr ev_drvslct
 	pla
 	sta gd_modswitch
-	jsr ev_cache
+	jsr ev_cache	; .x=0
 	ldy passover+1
 	lda #12
 	cmp passover
@@ -322,6 +330,8 @@ sdr0	tya
 	sta sdrive,x
 	jsr gd_sproff
 	sta ls_flen
+	sta dirwins	; Zähler für Dir-Fenster auf 0 (für Filelängenanzeige)
+	sta dirend	; Ende des Directory auf 0
 	txa 
 	beq sdr1
 
@@ -333,7 +343,7 @@ sdr0	tya
 sdr1	jsr shsdrv	; Src: Unit-Number hilighten
 	jsr dirinfo
 	jsr sdir		; Inhalt
-	jmp cmpflen
+patch3	jmp cmpflen	; Längen anzeigen
 
 getdsklen	lda blksfree	; Disk-Restlänge merken
 	sta disklen
@@ -406,9 +416,12 @@ alldbuf	ldy sy_4bit,x	; count until no space anymore
 
 ; ------------------------------------------------ Compute File Lengths
 
-cmpflen	jsr prepdwin
-	lda #0
+cmpflen	lda #0
 	jsr initcntf
+cudflen	lda ls_drive
+	cmp sdrive
+	bne ++
+	jsr prepdwin
 	lda dirwin
 	sta zeile
 
@@ -416,24 +429,25 @@ cmpflen	jsr prepdwin
 	sta sc_movetab
 	sta sc_movetab+1
 	sta sc_movetab+2
+	sta sc_merk
 	jsr setloc	; relocate cursor
 	jsr gd_initmove
 	jsr bindex+2	; retrieve dir entry
 	tay
 	sta ls_index
 	bcc +
-	inc ls_adrmisc+1
-+	lda (ls_adrmisc),y
+	inc ls_adrmisc+1	; Vektor in dirbuffer
++	lda (ls_adrmisc),y	; Länge lo: .x
 	tax
 	iny
-	lda (ls_adrmisc),y
+	lda (ls_adrmisc),y	; Länge hi: .a
 	pha
 
 	iny
 	lda (ls_adrmisc),y	; next byte: space?
 	cmp #32
 	beq +
-	pla		; no, end of dir
+	pla		; no, end of dir (found: "b")
 	clc
 	rts
 
@@ -455,7 +469,7 @@ cmpflen	jsr prepdwin
 	lda counter
 	cmp ls_dlines
 	bne --
-	clc
+++	clc
 	rts
 
 setloc	lda zeile
@@ -464,19 +478,33 @@ setloc	lda zeile
 	jsr gd_setpar
 	jmp gd_trim
 
+getmaxdb	ldy #$ff
+	sty dirend
+	iny
+	tya
+-	cpy dirwins
+	beq +
+	sec
+	adc nexttop,y	; Anzahl möglicher Dir-Blocks (plus 1)
+	iny
+	cmp numfiles
+	bcc -
+	sty dirend
++	rts
+
 ; ------------------------------------------------ 
 
 initcntf	sta ls_index	; .a: base offset into first record
-	lda #$40		; count files starting from $402x
+	lda #>sy_4bit	; count files starting from $402x
 	sta alldbuf+2
 	sta ls_adrmisc+1
 	lsr		; Step: 32
+	sta sc_merk
 	ldy #0
 	sty alldbuf+1
 	sty ls_adrmisc
-	sty counter
+initcud	sty counter
 	sty counter+1
-	sta sc_merk
 	rts
 
 ; ------------------------------------------------ Directory of Destination
@@ -534,7 +562,7 @@ err	pla
 	jsr cnva7		; Filenamenslänge auf 0
 sterr	lda ls_drive	; aktuellen Drive anwählen
 	jsr dirinfo	; Directory ausgeben
-	jmp gd_spron
+	jmp stay
 
 ; ------------------------------------------------ LOAD Directory Header
 
@@ -970,6 +998,7 @@ sco03	ldx #0		; "Copy"
 	lda filelen+1
 	ldx filelen
 	jsr steps
+	jsr settab
 	ldy #28
 	jsr sel84
 
@@ -1019,18 +1048,16 @@ scl3	jsr sevddrive	; Directory of Dest Drive
 	stx movefl
 	stx ls_flen
 	jsr check41	; 1541: again Job-Reset
-	jmp gd_spron
+	jmp stay
 
 ; ------------------------------------------------ ERROR
 
 err6	jsr sevsdrive
-	jmp gd_spron
+	jmp stay
 
 closeall	lda #12
 	jsr close
 	lda #13
-	jsr close
-	lda #15
 	jmp close
 
 ; ------------------------------------------------ Errors
@@ -1064,7 +1091,7 @@ er80	lda ermess,x	; "ERROR" in Titel ausgeben
 
 ; ------------------------------------------------ Event: Scroll Source
 
-sevsupdn	lda ls_drive	; Source angewählt?
+sevsupdn	lda ls_drive
 	cmp sdrive
 	beq +
 	jmp sevdupdn
@@ -1072,7 +1099,7 @@ sevsupdn	lda ls_drive	; Source angewählt?
 	sta merkzl
 	lda sdrive
 	sta ls_drive
-	jsr di4
+	jsr di4		; show src drive
 	lda #indent	; Einrückung des Directorys
 
 destud	sta dspalte
@@ -1080,43 +1107,69 @@ destud	sta dspalte
 	sta ls_track
 
 	lda merkzl	; wo geklickt?
-	cmp #12		; up oder down?
-	bcs up
-dn	ldy block+$1e
+	cmp #12		; up oder down? (oberhalb Zeile 12?)
+	bcs up		; ja
+
+dn	dec dirwins	; nein, zurückblättern
+	dec dirwins
+	bpl +
+	lda ls_drive
+	cmp sdrive
+	bne +
+	jmp sevsdrive	; Anfang erreicht: von vorn
++	ldy block+$1e	; get # of dir blocks in window
 	bne sdw4
-	ldy #2
-sdw4	iny 
+	ldy #2		; if 0: set 2
+sdw4	iny 		; plus 1
 	tya 
 	!by $2c
 up	lda #1
-	pha 
+	inc dirwins	; vorwärts blättern
+	pha 		; dir blocks merken
 
 	lda ddrv
 	jsr prepdir
-	pla 
+	jsr getmaxdb
+
+	pla 		; zurückholen
 	tay 
-sdw5	ldx block
+sdw5	ldx block		; next block: 0?
 	dex 
 	bne sdw2
-	ldy block+$1f
+	ldy block+$1f	; yes, so get first block
 	inx 
 	sty block+1
 	bne sdw11
+
 sdw0	dex 
 	bne sdw2
 	inx 
-sdw2	dey 
+sdw2	dey 		; .x und .y beide auf 0
 	bne sdw0
 sdw1	ldy block,x
+
 sdw11	lda fftrack,x
 	sta ls_track
 	stx block
+	dex
+	stx lblock
 	ldx sdirwin
 	stx sc_zl
-	ldx #1
+	lda dirwins
+	cmp dirend	; Ende erreicht?
+	bcs ++
+	ldx #1		; .x *muss* auf 1! .y: Dirblock
 	jsr dir4		; System Directory
-	jsr svftrack
-	jmp sdir3		; restore system dir (dspalte)
+	jsr mal32
+	jsr cudflen
+	bcc +
+++	lda #$ff
+	sta dirend
+	dec dirwins
+	ldx lblock
+	bne sdw1
++	jsr svftrack
+sdw12	jmp sdir3		; restore system dir (dspalte)
 
 ; ------------------------------------------------ Directory of Destination
 
@@ -1323,8 +1376,8 @@ sevpanels	ldx pantgl	; toggles to 0 or 1
 ++	jsr sq1
 	jsr setmax
 	jsr uiout		; .x=0
-	jsr sevsdrive
-	jmp cmpflen
+	jsr sevsdrive	; Dir-Inhalt von vorn
+	jmp cmpflen	; Längen anzeigen
 
 setmax	sty footer
 	sty footerwin
@@ -1338,15 +1391,52 @@ setmax	sty footer
 	sty eons
 	sty eond
 	sty eopd
-	stx maxdlines
 	stx sdirwin+3
 	stx sdirwin+10
 	stx scroll+3
 	stx scrollbar+3
-	dex
+	stx maxdlines
+setdls	dex
 	dex
 	stx ls_dlines
 	rts
+
+; ------------------------------------------------ Times 32
+
+mal32	lda #0
+	clc
+	ldy dirwins
+	beq +
+-	dey
+	bmi ++
++	adc nexttop,y
+	bne -
+++	sta ls_vekta8
+
+	tya		; erster Block?
+	bne +
+	dec ls_vekta8	; ja, .a minus 1
+
++	ldy #0
+	sty ls_vekta8+1
+	asl ls_vekta8	; .a mal 32
+	rol ls_vekta8+1
+	asl ls_vekta8
+	rol ls_vekta8+1
+	asl ls_vekta8
+	rol ls_vekta8+1
+	asl ls_vekta8
+	rol ls_vekta8+1
+	asl ls_vekta8
+	rol ls_vekta8+1
+	clc
+	lda ls_vekta8+1	; Ergebnis in .x (lo) und .a (hi)
+	adc #>sy_4bit	; plus Pufferanfang
+	sta ls_adrmisc+1
+	sty ls_adrmisc
+	lda ls_vekta8
+	sta ls_index
+	jmp initcud	; .y=0
 
 ; ------------------------------------------------ Show UI Screen
 
@@ -1409,18 +1499,29 @@ setblktx	cmp #4
 	tay
 	and #15
 	beq +
+	ldx #0
 	tya
 	lsr
 	lsr
 	lsr
 	lsr
-	ora #$30
+	beq ++
+	cmp #1
+	beq ++
+fl70	ora #$30
 	!by $2c
 +	lda #$34
-	sta dtype+2
-	sta drtypetx+6
+	sta dtype+2,x
+	sta drtypetx+6,x
 	rts
 
+++	tay
+	lda #7
+	jsr fl70
+	inx
+	tya
+	jmp fl70	
+	
 ; ------------------------------------------------ Screenlist
 
 explrlst	!by $93
@@ -1615,7 +1716,7 @@ dollar	!pet "$:"
 scratch	!pet "s:"
 	!fill 36,32
 rename	!pet "="
-	!fill 17,32
+next	!fill 17,32
 wname	!fill 21,32
 wtype	!pet ",p,w"
 init	!pet "i0"
@@ -1638,20 +1739,23 @@ list	!wo 0
 pantgl	!by 0
 maxdlines	!by maxdir
 
-; --------------------------- Kringel definieren
-
-chschr	!by $00,$3a,$46,$4e,$40,$40,$3c,$00
-
-makechr	ldx #7
--	lda chschr,x
-	sta sc_undochar,x
-	dex
-	bpl -
-	rts
-
 ; ------------------------------------------------ 
 
-svftrack	ldx #64
+svftrack	lda ls_index	; index in dir of next top entry (offset/32)
+	lsr
+	lsr
+	lsr
+	lsr
+	lsr
+	sta stmerk
+	sec
+	lda ls_dlines
+	sbc stmerk
+	ldx dirwins
+	sta nexttop,x
+	bne +
+	dec nexttop,x
++	ldx #64
 cdp2	lda ftrack-1,x	; Chain of Tracks in Dir Window
 	sta fftrack-1,x	; save it
 	dex 
@@ -1807,8 +1911,8 @@ filltab	!by 160,93,103,127,126,124,105,109
 
 cntwert	!by 1
 
-txt	!scr "Cp:   @"
-	!scr "Mv:   @"
+txt	!scr "C:    @"
+	!scr "M:    @"
 
 message	!fill 6,32
 mess	!fill 20,32

@@ -7,7 +7,7 @@
 ; sys.Explorer
 ; goDos System App for File Management
 ;
-; 1.00, 25.09.17
+; 1.00, 27.09.17
 ;
 ; ------------------------------------------------ 
 
@@ -31,6 +31,7 @@
 	dirwins		= $3f
 	dirend		= $40
 	lblock		= $41
+	numblks		= $42
 
 	byte		= $a3
 	fcolor		= $ac
@@ -81,7 +82,7 @@
 	!wo 0
 	!pet "U&I Explorer    "
 	!pet "1.00"
-	!pet "25.09.17"
+	!pet "27.09.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Main
@@ -332,6 +333,7 @@ sdr0	tya
 	sta ls_flen
 	sta dirwins	; Zähler für Dir-Fenster auf 0 (für Filelängenanzeige)
 	sta dirend	; Ende des Directory auf 0
+	sta numblks
 	txa 
 	beq sdr1
 
@@ -478,19 +480,25 @@ setloc	lda zeile
 	jsr gd_setpar
 	jmp gd_trim
 
-getmaxdb	ldy #$ff
-	sty dirend
-	iny
-	tya
--	cpy dirwins
+; ------------------------------------------------ 
+
+getmaxdb	ldy dirend	; Ende: 255
 	beq +
-	sec
-	adc nexttop,y	; Anzahl möglicher Dir-Blocks (plus 1)
-	iny
+	bpl ++
++	dec dirend
+	tya
+	sec		; (einen mehr zählen!)
+-	adc nexttop,y	; Anzahl Files erreicht?
 	cmp numfiles
-	bcc -
+	bcs +		; ja, hier Ende setzen
+	iny
+	cpy dirwins	; Anzahl Ausgabefenster überschritten?
+	beq -
+	bcc -		; nein, Files weiter zählen
+++	rts		; ja, nichts tun
++	iny
 	sty dirend
-+	rts
+	rts
 
 ; ------------------------------------------------ 
 
@@ -1110,14 +1118,20 @@ destud	sta dspalte
 	cmp #12		; up oder down? (oberhalb Zeile 12?)
 	bcs up		; ja
 
-dn	dec dirwins	; nein, zurückblättern
+dn	ldy block+$1e	; get # of dir blocks in window
+	sty numblks
+	dec dirwins	; nein, zurückblättern
 	dec dirwins
-	bpl +
-	lda ls_drive
+	bmi +		; zu weit? (dann von vorn)
+	bne ++
+	cpy #1		; oder: dirwins=0 & numblks=1?
+	bne ++
++	lda ls_drive	; (on src?)
 	cmp sdrive
-	bne +
-	jmp sevsdrive	; Anfang erreicht: von vorn
-+	ldy block+$1e	; get # of dir blocks in window
+	bne ++
+	jmp sevsdrive	; ja, Anfang erreicht: von vorn
+
+++	tya		; numblks:
 	bne sdw4
 	ldy #2		; if 0: set 2
 sdw4	iny 		; plus 1
@@ -1148,11 +1162,12 @@ sdw2	dey 		; .x und .y beide auf 0
 	bne sdw0
 sdw1	ldy block,x
 
-sdw11	lda fftrack,x
+sdw11	lda fftrack,x	; Trackliste retten
 	sta ls_track
-	stx block
+	stx block		; Block merken
 	dex
-	stx lblock
+	stx lblock	; Lastblock ebenso
+
 	ldx sdirwin
 	stx sc_zl
 	lda dirwins
@@ -1163,10 +1178,8 @@ sdw11	lda fftrack,x
 	jsr mal32
 	jsr cudflen
 	bcc +
-++	lda #$ff
-	sta dirend
-	dec dirwins
-	ldx lblock
+++	dec dirwins
+	ldx lblock	; ein Block zurück (>???)
 	bne sdw1
 +	jsr svftrack
 sdw12	jmp sdir3		; restore system dir (dspalte)
@@ -1413,7 +1426,7 @@ mal32	lda #0
 	bne -
 ++	sta ls_vekta8
 
-	tya		; erster Block?
+	lda dirwins	; erster Block?
 	bne +
 	dec ls_vekta8	; ja, .a minus 1
 
@@ -1755,6 +1768,7 @@ svftrack	lda ls_index	; index in dir of next top entry (offset/32)
 	sta nexttop,x
 	bne +
 	dec nexttop,x
+
 +	ldx #64
 cdp2	lda ftrack-1,x	; Chain of Tracks in Dir Window
 	sta fftrack-1,x	; save it

@@ -20,7 +20,8 @@
 ;
 ;   0.99, 07.08.17, first release for godos
 ;         25.08.17, changed: max # of entries in dir window is variable now
-;         26.08.17, changed: new SysPattern (two more Gadget types)
+;   1.00, 26.08.17, changed: new SysPattern (thus two more Gadget types)
+;   1.01, 10.10.17, added: loading of xhelpers
 ;
 ; ------------------------------------------------------------ 
 
@@ -212,7 +213,7 @@ mkt0	lda tabs-$40,x
 
 ; --------------------------------------- 
 
-version	!byte $00,$99	; Versionsnummer in SED-Format
+version	!byte $01,$01	; Versionsnummer in SED-Format
 
 ; --------------------------------------- 
 
@@ -261,6 +262,8 @@ mainprg	!pet "uni.main"
 mplen	!byte $08
 slot4	!pet "uni.slot4"
 s4len	!byte $09
+xhelp	!pet "uni.xhelpers"
+xhlen	!byte $0c
 godini	!pet "uni.ini         "
 godini2	!pet "uni.ini"
 ini	!pet "ini."
@@ -419,7 +422,8 @@ load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	tax
 	ldy #$08
 	jsr load
-	bcs error
+	bcs er2
+
 	lda mplen		; dann den Kernel (uni.main)
 	ldx #<(mainprg)
 	ldy #>(mainprg)
@@ -432,8 +436,9 @@ load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	tax
 	ldy #$10
 	jsr load
-	bcs error
+er2	bcs error
 	jsr setscreen	; Bootscreen aktivieren
+
 	lda s4len		; dann die Sonderroutinen (uni.slot4)
 	ldx #<(slot4)
 	ldy #>(slot4)
@@ -447,6 +452,21 @@ load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	ldy #$f0
 	jsr load
 	bcs error
+
+	lda xhlen		; und die Explorer Helpers (uni.xhelpers)
+	ldx #<(xhelp)
+	ldy #>(xhelp)
+	jsr filnam
+	lda #$01
+	ldx drivenr
+	ldy #$00
+	jsr filpar
+	lda #$00
+	tax
+	ldy #$b0
+	jsr load
+	bcs error
+
 	lda godlen	; und schlieﬂlich die INI-Datei (uni.ini)
 	ldx #<(godini)
 	ldy #>(godini)
@@ -461,6 +481,7 @@ load4	lda chlen		; zuerst Zeichensatz (uni.set)
 	jsr load
 	bcc l4
 	inc noparse	; bei Fehler: "nicht auswerten" aktivieren
+
 l4	lda drivenr	; Bootdrive bekanntmachen
 	sta ls_drive
 	sta gdrive

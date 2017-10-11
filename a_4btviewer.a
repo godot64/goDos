@@ -9,7 +9,8 @@
 ;
 ; 1.00, 17.08.17, first release
 ; 1.01, 05.09.17, removed storing colors
-; 1.02, 22.09.17, added recognition of Cancel 
+; 1.02, 22.09.17, added recognition of Cancel
+; 1.03, 11.10.17, added reload of xhelpers
 ;
 ; ------------------------------------------------------------ 
 
@@ -60,6 +61,8 @@
 	htab0	= $3f90
 	rtab	= $3fb0
 
+	ui_xhelpers	= $b000
+
 	oszi3	= $d40e
 	wave	= $d412
 	filter	= $d418
@@ -76,6 +79,8 @@
 	vram1	= $de0b
 	vram2	= $ee0b
 
+	load	= $ffd5
+
 ; ----------------------------------------- Header
 
 header	jmp start
@@ -86,8 +91,8 @@ header	jmp start
 	!by 0
 	!by 0
 	!pet "4bit ldr&viewer "
-	!pet "1.02"
-	!pet "22.09.17"
+	!pet "1.03"
+	!pet "11.10.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Leave Module
@@ -236,7 +241,9 @@ ld7	jsr gd_spron	; Sprites on
 	ora ls_vekta8+1
 	bne +		; then view it
 view	jsr evdisplay
-+	jmp cancel
++	lda #0		; ### 1.03 Bugfix
+	sta ls_err2
+	jmp cancel
 
 ; ----------------------------------------- Subroutines
 
@@ -275,6 +282,8 @@ breite	!wo 0
 hoehe	!by 25
 list	!by $00,$00
 bktmp	!by 0
+xhelp	!pet "uni.xhelpers"
+xhlen	!by 12
 
 ; ----------------------------------------- 
 
@@ -282,6 +291,30 @@ filltab	!by 160,93,103,127,126,124,105,109
 message	!scr " Reading  "
 mess	!fill 22,32
 	!by 0
+
+; --------------------------------------- Restore xhelpers
+
+reloadxh	jsr gd_sproff
+	lda sc_normtext
+	sta border
+	lda xhlen		; get Explorer Helpers (uni.xhelpers)
+	ldx #<(xhelp)
+	ldy #>(xhelp)
+	jsr filnam
+	lda #$01
+	ldx ls_bootdrive
+	ldy #$00
+	jsr filpar
+	lda #<ui_xhelpers
+	tax
+	ldy #>ui_xhelpers
+	jsr load
+	bcc +
+	lda #$18		; on error set CLC/RTS
+	sta ui_xhelpers
+	lda #$60
+	sta ui_xhelpers+1
++	jmp gd_spron
 
 ; ----------------------------------------- Read Floppy File/decompress
 
@@ -475,10 +508,11 @@ dp4	lda #$1b		; hires when 0
 dp1	lda sc_keyprs	; wait for key or STOP
 	ora sc_stop
 	beq dp1
+	jsr reloadxh
 	jsr tmode		; switch textmode on
-	ldx sc_screenvek	; save vector to current screenlist
+	ldx sc_screenvek	; get vector to current screenlist
 	ldy sc_screenvek+1
-	jsr gd_screen
+	jsr gd_screen	; restore screen
 dp3	clc		; finished (stay in list)
 	rts
 

@@ -1,0 +1,152 @@
+
+!src "..\godoslib.lib"
+*= $b000
+
+; -------------------------------------------------- 
+;
+; U&I Helper Routines for sys.Explorer
+;
+; 0.01, 10.10.17, first release
+;
+; -------------------------------------------------- Declarations
+
+	infosp		= 18		; Konstanten
+	lrlimit		= 29
+
+	pport		= $01		; usually $36
+
+; ------------------------------------------------ 
+
+	sel6		= $c5b3
+	dollar		= $cd9e
+	scratch		= $cdb1
+	wname		= $cde9
+	movefl		= $ce19
+	wflen		= $ce04
+
+	ui_vcache		= $b500
+	ui_ccache		= $b900
+	dirbuffer		= sy_bigbuffer
+
+; -------------------------------------------------- Header
+
+	jmp start
+	!by $20
+	!wo 0
+	!wo modend
+	!wo 0
+	!pet "goDos b000 helps"
+	!pet "0.01"
+	!pet "10.10.17"
+	!pet "A.Dettke        "
+
+; -------------------------------------------------- Module Management
+
+start	ldx gr_nr		; get function number
+	beq leave		; 0: unused
+	dex
+	beq jfinput	; 1: Input Filename
+	dex
+	beq leave		; 2: unused
+	dex
+	beq leave		; 3: unused
+	dex
+	beq leave		; 4: unused
+	dex
+	beq leave		; 5: unused
+	dex
+	beq leave		; 6: unused
+	dex
+	beq leave		; 7: unused
+
+leave	clc
+	rts
+
+jfinput	jmp sevfinput
+
+; ------------------------------------------------ Text Output Handler
+
+settab	lda #<(tabigad)
+	sta sc_texttab
+	lda #>(tabigad)
+	sta sc_texttab+1
+	rts 
+
+tabigad	!wo enoth		; 0 Error: Nothing selected
+
+out1	asl movefl	; Moveflag aus
+out2	jsr settab
+	jsr ui_gettab
+	ldy #3
+	jmp gd_xtxout1
+
+; ------------------------------------------------ Event: Input Filename
+
+sevfinput	lda #32
+	ldy ls_flen	; Filename vorhanden?
+	beq fierr		; nein, nothing selected
+	iny 
+	sta (sc_vekt20),y
+	ldy #0
+	sta (sc_vekt20),y
+ip0	inc sc_vekt20
+	bne ip01
+	inc sc_vekt20+1
+ip01	lda sc_br
+	pha 
+	lda #17
+	sta sc_br
+	jsr gd_xinput	; System-Input
+	pla 
+	sta sc_br
+	lda sc_vekt20
+	bne ip02
+	dec sc_vekt20+1
+ip02	dec sc_vekt20
+	ldy ls_len
+	dey 
+	beq fierr
+	bmi fierr
+	tya 
+	sta ls_flen
+	clc 
+	adc #4
+	sta wflen
+ip4	ldy #34
+ip1	iny 
+	lda dirbuffer,y
+	cmp #34
+	bne ip1
+	ldx #$ff
+ip2	inx 
+	iny 
+	lda ls_nambuf,x	; überall eintragen
+	sta dirbuffer,y
+	sta dollar+2,x
+	sta scratch+2,x
+	sta wname,x
+	cpx ls_flen
+	bne ip2
+	lda #34
+	sta dirbuffer,y
+	lda #32
+ip6	iny 
+	sta dirbuffer,y
+	cpy #56
+	bne ip6
+	ldy #34
+	jmp sel6		; anzeigen
+
+; ------------------------------------------------  
+
+fierr	ldy #0
+	jmp out1		; "nothing selected"
+
+; ------------------------------------------------ Messages
+
+enoth	!by 22,0,28,3
+	!scr "    Nothing selected.     @"
+
+; ------------------------------------------------ 
+
+modend	!eof		; end of helper routines

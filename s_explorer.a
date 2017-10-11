@@ -1,5 +1,6 @@
 
 	!src "..\godoslib.lib"
+;	!sl "labels.a"
 	*= $c000
 
 ; ------------------------------------------------ 
@@ -7,7 +8,7 @@
 ; sys.Explorer
 ; goDos System App for File Management
 ;
-; 1.00, 06.10.17
+; 1.00, 10.10.17
 ;
 ; ------------------------------------------------ 
 
@@ -63,8 +64,10 @@
 	blksfree		= dirbuffer+32
 	filetype		= dirbuffer+54
 	fftrack		= dirbuffer+160
-	nexttop		= $be00		; dirbuffer+256
+
+	ui_xhelpers	= $b000		; Explorer Helper Routines
 	tagbuffer		= $b500
+	nexttop		= $be00		; dirbuffer+256
 	sysdirbuf		= $bf00
 	buffer		= ui_vcache	; transport buffer (1 block)
 
@@ -83,17 +86,18 @@
 	!wo 0
 	!pet "U&I Explorer    "
 	!pet "1.00"
-	!pet "06.10.17"
+	!pet "10.10.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Main
 
-start	lda #0
+start	lda ls_dlines
+	pha
+
+	lda #0
 	sta ls_dirmask
 	sta movefl
 	sta pantgl
-	lda ls_dlines
-	pha
 
 	ldx osdrive
 	stx sdrive
@@ -102,12 +106,13 @@ start	lda #0
 	ldy #22
 	ldx #maxdir
 	jsr setmax
-	lda #4
-	sta maxblks
+	ldx #4
+	stx maxblks
 	ldx ls_flen
 	stx aflen
 	ldx ls_showfiles
 	stx afiles
+
 	ldx ls_drive
 	stx adrive	; aktueller Drive: 12? (RAM)
 	cpx #12
@@ -132,9 +137,11 @@ st1	sta ddrive	; Destination Drive setzen
 	jsr shddrv
 	jsr sevsdrive	; Source Drive: Info
 	jsr getdirall	; Komplett-Dir holen
-	jsr cntfiles	; Files zählen
+	jsr cntfiles	; Files zählen, .x=0
 	jsr cmpflen	; Längen in ersten Panel anzeigen
 	jsr chkdrvpar	; System Dir Records holen
+	lda #11
+	sta nexttop
 	lda #$4c
 	sta patch3
 	lda sdrive	; erster Start?
@@ -1223,66 +1230,15 @@ sud3	sta merkzl
 	jsr destud
 	jmp swap		; re-swap
 
-; ------------------------------------------------ Event: Input Filename
-
-sevfinput	lda #32
-	ldy ls_flen	; Filename vorhanden?
-	beq fierr		; nein, nothing selected
-	iny 
-	sta (sc_vekt20),y
-	ldy #0
-	sta (sc_vekt20),y
-ip0	inc sc_vekt20
-	bne ip01
-	inc sc_vekt20+1
-ip01	lda sc_br
-	pha 
-	lda #17
-	sta sc_br
-	jsr gd_xinput	; System-Input
-	pla 
-	sta sc_br
-	lda sc_vekt20
-	bne ip02
-	dec sc_vekt20+1
-ip02	dec sc_vekt20
-	ldy ls_len
-	dey 
-	beq fierr
-	bmi fierr
-	tya 
-	sta ls_flen
-	clc 
-	adc #4
-	sta wflen
-ip4	ldy #34
-ip1	iny 
-	lda dirbuffer,y
-	cmp #34
-	bne ip1
-	ldx #$ff
-ip2	inx 
-	iny 
-	lda ls_nambuf,x	; überall eintragen
-	sta dirbuffer,y
-	sta dollar+2,x
-	sta scratch+2,x
-	sta wname,x
-	cpx ls_flen
-	bne ip2
-	lda #34
-	sta dirbuffer,y
-	lda #32
-ip6	iny 
-	sta dirbuffer,y
-	cpy #56
-	bne ip6
-	ldy #34
-	jmp sel6		; anzeigen
-
 ; ------------------------------------------------ 
 
 fierr	jmp nothing
+
+; ------------------------------------------------ Event: Input File Name
+
+sevfinput	lda #1
+	sta gr_nr
+	jmp ui_xhelpers
 
 ; ------------------------------------------------ Event: File Info
 

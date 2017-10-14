@@ -17,12 +17,12 @@
 
 ; ------------------------------------------------ 
 
-	sel6		= $c5b3
-	dollar		= $cd9e
-	scratch		= $cdb1
-	wname		= $cde9
-	movefl		= $ce19
-	wflen		= $ce04
+	sel6		= $c5b6
+	dollar		= $cda1
+	scratch		= $cdb4
+	wname		= $cdec
+	movefl		= $ce1c
+	wflen		= $ce07
 
 	ui_vcache		= $b500
 	ui_ccache		= $b900

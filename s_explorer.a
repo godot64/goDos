@@ -1,6 +1,6 @@
 
 	!src "..\godoslib.lib"
-;	!sl "labels.a"
+	!sl "labels.a"
 	*= $c000
 
 ; ------------------------------------------------ 
@@ -8,7 +8,7 @@
 ; sys.Explorer
 ; goDos System App for File Management
 ;
-; 1.00, 10.10.17
+; 1.00, 13.10.17
 ;
 ; ------------------------------------------------ 
 
@@ -86,7 +86,7 @@
 	!wo 0
 	!pet "U&I Explorer    "
 	!pet "1.00"
-	!pet "10.10.17"
+	!pet "13.10.17"
 	!pet "A.Dettke        "
 
 ; ----------------------------------------- Main
@@ -98,6 +98,7 @@ start	lda ls_dlines
 	sta ls_dirmask
 	sta movefl
 	sta pantgl
+	sta ls_err2
 
 	ldx osdrive
 	stx sdrive
